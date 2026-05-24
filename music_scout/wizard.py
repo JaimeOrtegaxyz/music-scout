@@ -7,6 +7,7 @@ config values are shown as defaults and accepted with Enter.
 
 from __future__ import annotations
 
+import spotipy
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
@@ -102,12 +103,37 @@ def _step_buckets(cfg: Config, client: SpotifyClient) -> None:
             console.print(f"    • {label} — already linked ({existing})")
             continue
         title = f"Music Scout — {label.title()}"
-        pid = client.create_playlist(
-            cfg.spotify.user_id, title,
-            description="Auto-curated by music-scout. Current-year tracks from configured blogs.",
-        )
+        try:
+            pid = client.create_playlist(
+                cfg.spotify.user_id, title,
+                description="Auto-curated by music-scout. Current-year tracks from configured blogs.",
+            )
+        except spotipy.SpotifyException as e:
+            _explain_playlist_403(e)
+            raise SystemExit(1)
         cfg.playlist_ids[label] = pid
         console.print(f"    • [green]created[/green] {title} ({pid})")
+
+
+def _explain_playlist_403(e: spotipy.SpotifyException) -> None:
+    """A 403 here almost always means the Spotify app's dashboard settings
+    haven't enabled Web API or haven't added the current user as a tester."""
+    if e.http_status != 403:
+        console.print(f"\n[red]Spotify error:[/red] {e}")
+        return
+    console.print(
+        "\n[red]Spotify rejected the playlist creation (403 Forbidden).[/red]\n"
+        "  Reads work, scopes are correct, but writes are blocked. Two things "
+        "to check on the app's Dev Dashboard:\n"
+        "    1. [bold]Settings → APIs[/bold]: 'Web API' must be checked. If the\n"
+        "       app was originally set up for cliamp, only 'Web Playback SDK'\n"
+        "       may be enabled.\n"
+        "    2. [bold]User Management[/bold]: your own Spotify account must\n"
+        "       be in the testers list (apps default to Development Mode,\n"
+        "       max 25 users, all explicitly added).\n"
+        "  After fixing, delete the cached token and re-run:\n"
+        "    [bold]rm data/.spotipy-cache && music-scout init[/bold]"
+    )
 
 
 def _step_blocklist(cfg: Config) -> None:

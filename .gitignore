@@ -7,6 +7,7 @@ data/state.sqlite-wal
 data/state.sqlite-shm
 data/cache/
 data/logs/
+data/.spotipy-cache
 .env
 .env.local
 

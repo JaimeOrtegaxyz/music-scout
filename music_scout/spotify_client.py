@@ -39,13 +39,18 @@ class SpotifyClient:
 
     @staticmethod
     def _build_client(cfg: Config) -> spotipy.Spotify:
+        from .paths import DATA_DIR
         auth = SpotifyOAuth(
             client_id=cfg.spotify.client_id,
             client_secret=cfg.spotify.client_secret,
             redirect_uri="http://127.0.0.1:8765/callback",
             scope=SCOPES,
             open_browser=True,
-            cache_path=str(__import__("music_scout.paths", fromlist=["DATA_DIR"]).DATA_DIR / ".spotipy-cache"),
+            # show_dialog forces the consent screen even on subsequent auths,
+            # which is what we want when the app is shared with another tool
+            # (e.g. cliamp) and the user might need to re-approve new scopes.
+            show_dialog=True,
+            cache_path=str(DATA_DIR / ".spotipy-cache"),
         )
         return spotipy.Spotify(auth_manager=auth, retries=3, status_retries=3, backoff_factor=0.5)
 

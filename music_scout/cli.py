@@ -95,6 +95,25 @@ def listen() -> None:
     console.print(msg)
 
 
+# ---- auth subgroup ----
+
+@cli.group()
+def auth() -> None:
+    """Manage Spotify auth state."""
+
+
+@auth.command("reset")
+def auth_reset() -> None:
+    """Delete the cached OAuth token so the next command re-prompts consent."""
+    from .paths import DATA_DIR
+    cache = DATA_DIR / ".spotipy-cache"
+    if cache.exists():
+        cache.unlink()
+        console.print(f"[green]removed[/green] {cache}")
+    else:
+        console.print("(no cached token to remove)")
+
+
 # ---- sources subgroup ----
 
 @cli.group()
