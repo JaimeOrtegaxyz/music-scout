@@ -1,0 +1,28 @@
+# --- user data (lives in repo for easy inspection, never committed) ---
+data/config.yaml
+data/sources.yaml
+data/state.sqlite
+data/state.sqlite-journal
+data/state.sqlite-wal
+data/state.sqlite-shm
+data/cache/
+data/logs/
+.env
+.env.local
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# --- editor / os ---
+.DS_Store
+.vscode/
+.idea/

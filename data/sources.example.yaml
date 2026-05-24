@@ -1,0 +1,36 @@
+# Copy to sources.yaml or let `music-scout init` generate one. Three types:
+#   rss              — any RSS/Atom feed; we'll pull Spotify embeds first,
+#                      then fall back to artist/title parsing of post titles.
+#   hypem            — Hype Machine; defaults to the popular feed if no url.
+#   spotify-playlist — read tracks from an existing Spotify playlist.
+#
+# `id` must be unique. `enabled: false` keeps a source on the list but skips it.
+sources:
+  - id: hypem-popular
+    type: hypem
+    name: Hype Machine — Popular
+    enabled: true
+
+  - id: aquarium-drunkard
+    type: rss
+    name: Aquarium Drunkard
+    url: https://aquariumdrunkard.com/feed/
+    enabled: true
+
+  - id: gorilla-vs-bear
+    type: rss
+    name: Gorilla vs. Bear
+    url: https://www.gorillavsbear.net/feed/
+    enabled: true
+
+  - id: stereogum
+    type: rss
+    name: Stereogum
+    url: https://www.stereogum.com/feed/
+    enabled: false  # high-volume — turn on once you've tuned the blocklist
+
+  - id: best-fit
+    type: rss
+    name: The Line of Best Fit
+    url: https://www.thelineofbestfit.com/rss
+    enabled: false
