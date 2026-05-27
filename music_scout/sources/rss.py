@@ -65,6 +65,7 @@ def _parse_feed(url: str) -> "feedparser.FeedParserDict":
 @register("rss")
 def fetch(source: Source) -> Iterator[Candidate]:
     feed = _parse_feed(source.url)
+    recipe = source.parse if isinstance(source.parse, dict) and source.parse.get("regex") else None
     for entry in feed.entries[:50]:  # newest 50 — keeps daily runs bounded
         post_url = entry.get("link", source.url)
         body = _entry_body(entry)
@@ -73,8 +74,67 @@ def fetch(source: Source) -> Iterator[Candidate]:
         if embeds:
             yield from embeds
             continue
-        # Strategy 2 (fallback): parse the post title as "Artist - Title".
+        # Strategy 2: an LLM-derived recipe for this feed, if one was saved.
+        if recipe:
+            cand = _from_recipe(entry, recipe, post_url)
+            if cand:
+                yield cand
+            continue
+        # Strategy 3 (fallback): parse the post title as "Artist - Title".
         yield from _from_title(entry, post_url)
+
+
+def _field_text(entry, field: str) -> str:
+    """Plain-text content of an entry field. HTML fields (summary/content)
+    are stripped to text so recipes match what the LLM was shown. Shared by
+    sample_entries() and _from_recipe() so the two never drift."""
+    if field == "content":
+        raw = entry["content"][0]["value"] if entry.get("content") else ""
+    else:
+        raw = entry.get(field, "") or ""
+    if field in ("summary", "content"):
+        return BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+    return raw
+
+
+def _from_recipe(entry, recipe: dict, post_url: str) -> Candidate | None:
+    """Apply a stored {field, regex} recipe (named groups artist/title)."""
+    field = recipe.get("field", "title")
+    text = _field_text(entry, field) or entry.get("title", "")
+    try:
+        m = re.search(recipe["regex"], text)
+    except re.error:
+        return None
+    if not m:
+        return None
+    artist = (m.groupdict().get("artist") or "").strip().strip(_QUOTES).strip()
+    title = (m.groupdict().get("title") or "").strip().strip(_QUOTES).strip()
+    if artist and title:
+        return Candidate(artist=artist, title=title, source_url=post_url)
+    return None
+
+
+def sample_entries(url: str, n: int = 8) -> list[dict]:
+    """Pull a few entries' title/author/summary for LLM recipe derivation."""
+    feed = _parse_feed(url)
+    out: list[dict] = []
+    for e in feed.entries[:n]:
+        out.append({
+            "title": _field_text(e, "title"),
+            "author": _field_text(e, "author"),
+            "summary": _field_text(e, "summary"),
+        })
+    return out
+
+
+def parse_yield(source: Source) -> tuple[int, int]:
+    """How many of the latest entries currently parse to a non-empty
+    artist+title? Returns (parsed, total). Used to decide whether a feed
+    needs an LLM recipe."""
+    cands = list(fetch(source))
+    feed = _parse_feed(source.url)
+    total = min(len(feed.entries), 50)
+    return len(cands), total
 
 
 def _entry_body(entry) -> str:

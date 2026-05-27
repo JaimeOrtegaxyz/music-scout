@@ -27,6 +27,9 @@ class Config:
     playlist_name: str = "Music Scout"
     market: str = "US"
     current_year: int | None = None  # None → use today's year at run time
+    # Optional: used only when ADDING a messy source, to derive a parse recipe.
+    # Env ANTHROPIC_API_KEY takes precedence; never needed on the daily run.
+    anthropic_api_key: str = ""
 
     @classmethod
     def load(cls) -> "Config":
@@ -40,6 +43,7 @@ class Config:
             playlist_name=raw.get("playlist_name", "Music Scout"),
             market=raw.get("market", "US"),
             current_year=raw.get("current_year"),
+            anthropic_api_key=raw.get("anthropic_api_key", ""),
         )
 
     def save(self) -> None:
@@ -57,6 +61,8 @@ class Config:
         }
         if self.current_year is not None:
             payload["current_year"] = self.current_year
+        if self.anthropic_api_key:
+            payload["anthropic_api_key"] = self.anthropic_api_key
         CONFIG_PATH.write_text(yaml.safe_dump(payload, sort_keys=False))
         CONFIG_PATH.chmod(0o600)  # contains auth tokens
 
@@ -70,6 +76,10 @@ class Source:
     url: str = ""      # RSS URL for rss, or homepage for display
     playlist_id: str = ""  # for spotify-playlist sources
     enabled: bool = True
+    # Optional LLM-derived parse recipe: {"field": "title", "regex": "..."}
+    # with named groups `artist` and `title`. When absent, the generic
+    # separator/embed parser is used.
+    parse: dict | None = None
 
 
 def load_sources() -> list[Source]:
@@ -83,7 +93,8 @@ def save_sources(sources: list[Source]) -> None:
     ensure_dirs()
     payload = {
         "sources": [
-            {k: v for k, v in s.__dict__.items() if v not in ("", False) or k in ("enabled", "name", "id", "type")}
+            {k: v for k, v in s.__dict__.items()
+             if (v not in ("", False, None) or k in ("enabled", "name", "id", "type"))}
             for s in sources
         ]
     }

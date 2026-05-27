@@ -11,7 +11,7 @@ You are working in the user's music-scout repo (`~/Documents/GitHub/music-scout/
 
 Three-stage pipeline, each persisted to `data/state.sqlite`:
 
-1. **fetch** — pull candidates from each source (`sources.yaml`). Sources are RSS feeds, Hype Machine, or Spotify playlists. Output: `{artist, title, source_id, source_url}`.
+1. **fetch** — pull candidates from each source (`sources.yaml`). Sources are RSS feeds, Hype Machine, or Spotify playlists. RSS parsing tries, in order: Spotify embeds in the post body → a stored LLM-derived `parse` recipe (regex on a chosen field) → generic "Artist - Title" splitting. Output: `{artist, title, source_id, source_url}`.
 2. **resolve** — search Spotify for each candidate, get `spotify_uri` + `release_date`. If no Spotify hit → status `not_on_spotify` (retried daily).
 3. **filter + add** — drop tracks where `release_date.year != current_year` (→ `not_current_year`, terminal). Everything else is added to the single playlist (`config.yaml` `playlist_id`) at position 0, deduped against what's already there.
 
@@ -27,7 +27,8 @@ This project hit the Feb 2026 Web API breaking changes head-on. Things to rememb
 
 ## What the user typically wants
 
-- **"Add this blog"** → `music-scout sources add <url>`. If the URL isn't an RSS feed, the wizard tries to discover one (look for `<link rel="alternate" type="application/rss+xml">` in the HTML head; common paths: `/feed`, `/rss`, `/index.xml`). Confirm before saving.
+- **"Add this blog"** → `music-scout sources add <url>`. If the URL isn't an RSS feed, the wizard tries to discover one (look for `<link rel="alternate" type="application/rss+xml">` in the HTML head; common paths: `/feed`, `/rss`, `/index.xml`). Confirm before saving. Adding an RSS source auto-derives an LLM parse recipe if a backend is available.
+- **"This feed's parsing is junk"** → `music-scout sources fix <id>` (or `--all`). Re-derives the recipe. If you're in a Claude Code session, you can also just inspect a few entries yourself and hand-write the `parse: {field, regex}` block in `sources.yaml` — named groups `artist` and `title`, regex runs against the chosen field's plain text (HTML stripped for summary/content).
 - **"What did I get today?"** → `music-scout status`, then summarize. For detail: `SELECT artist, title, release_date FROM tracks WHERE status='added' AND date(added_at)=date('now')`.
 - **"Retry the missing ones"** → `music-scout retry`.
 - **"It's broken"** → check `data/logs/run-<latest>.log` first. Common failures: source HTML changed (RSS moved/redesigned), Spotify auth token expired (`music-scout auth reset` then re-auth), launchd disabled (`launchctl list | grep music-scout`), or a write 403 (check Premium / Web API / User Management).

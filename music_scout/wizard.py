@@ -153,7 +153,60 @@ def _interpret_source_entry(entry: str, existing_ids: set[str]) -> Source | None
         console.print(f"    found [green]{feed_url}[/green]")
     name = Prompt.ask("    Name for this source", default=_guess_name(feed_url))
     sid = _unique_id(_slug(name), existing_ids)
-    return Source(id=sid, type="rss", name=name, url=feed_url)
+    return derive_recipe_for(Source(id=sid, type="rss", name=name, url=feed_url))
+
+
+def derive_recipe_for(source: Source) -> Source:
+    """For an RSS source, ask an LLM to derive a parse recipe (stored on the
+    source) so the daily run extracts artist/title deterministically. Falls
+    back silently to the generic parser when no LLM backend is configured.
+    Safe to call repeatedly (e.g. `sources fix`)."""
+    if source.type != "rss":
+        return source
+    from . import llm
+    from .config import Config
+    from .sources import rss
+
+    llm.set_api_key(Config.load().anthropic_api_key)
+    samples = rss.sample_entries(source.url)
+    if not samples:
+        console.print("    [yellow]no entries in feed yet — skipping recipe[/yellow]")
+        return source
+
+    backend = llm.available()
+    if not backend:
+        parsed = len(list(rss.fetch(source)))
+        console.print(
+            f"    generic parser got {parsed} track(s). "
+            "[dim]Set ANTHROPIC_API_KEY or install Claude Code to auto-derive "
+            "a tailored recipe for messy feeds.[/dim]"
+        )
+        return source
+
+    console.print(f"    asking [cyan]{backend}[/cyan] to derive a parse recipe…")
+    recipe = llm.derive_recipe(samples)
+    if recipe is None:
+        console.print("    [yellow]couldn't derive a recipe; using generic parser[/yellow]")
+        return source
+    if recipe.get("unparseable"):
+        source.parse = None
+        console.print(
+            f"    [yellow]this feed doesn't name individual songs "
+            f"({recipe.get('reason', 'reviews/announcements')}). "
+            "It may yield little — consider removing it.[/yellow]"
+        )
+        return source
+
+    source.parse = {"field": recipe.get("field", "title"), "regex": recipe["regex"]}
+    preview = list(rss.fetch(source))[:4]
+    if not preview:
+        source.parse = None
+        console.print("    [yellow]recipe matched nothing; reverting to generic parser[/yellow]")
+        return source
+    console.print(f"    [green]recipe derived[/green] (field={source.parse['field']}). Sample:")
+    for c in preview:
+        console.print(f"      {c.artist} — {c.title}")
+    return source
 
 
 def _guess_name(url: str) -> str:

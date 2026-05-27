@@ -21,6 +21,12 @@ dependencies = [
     "platformdirs>=4.0",     # OS-correct cache locations
 ]
 
+[project.optional-dependencies]
+# `pip install music-scout[ai]` enables LLM-derived parse recipes via the
+# Anthropic API. Without it (and without the `claude` CLI), feeds fall back to
+# the generic parser. Never needed on the daily run.
+ai = ["anthropic>=0.40"]
+
 [project.scripts]
 music-scout = "music_scout.cli:cli"
 

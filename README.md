@@ -60,10 +60,42 @@ Everything you answer is written to `data/config.yaml` and `data/sources.yaml` �
 | `music-scout init` | First-run wizard (above). |
 | `music-scout run` | One full pass: fetch → resolve → year-filter → add. What launchd calls. |
 | `music-scout sources` | List/add/remove sources without re-running the wizard. |
+| `music-scout sources fix <id>` / `--all` | Re-derive an AI parse recipe for a messy RSS feed (see below). |
 | `music-scout retry` | Re-check tracks marked `not_on_spotify` to see if they've appeared. |
 | `music-scout listen` | Open [cliamp](https://github.com/bjarneo/cliamp) queued up with today's adds. |
 | `music-scout status` | Print today's adds and the retry-queue size. |
 | `music-scout schedule install` / `uninstall` | Manage the launchd plist. |
+
+## Messy feeds & AI parse recipes
+
+Every music blog writes its post titles differently — "Artist - Song", "Stream: Artist – Song", "Artist『Song』を公開", or worst case the song is buried in the post body while the title just says "EP REVIEW". A single hard-coded parser can't keep up.
+
+So music-scout can ask an LLM to look at a few sample entries from a feed and write a small, deterministic **parse recipe** — a regex (with named `artist`/`title` groups) plus which field to read — that gets stored in `sources.yaml`:
+
+```yaml
+- id: listenwithmonger
+  type: rss
+  url: https://listenwithmonger.blogspot.com/feeds/posts/default
+  parse:
+    field: summary
+    regex: '^(?P<artist>.+?) - (?P<title>.+?)(?: \(| Release Date)'
+```
+
+**The LLM runs only when you add or `fix` a source — never on the daily run.** The cron job just applies the saved regex with plain `re`, so it stays fast, free, and reproducible.
+
+It's optional and degrades gracefully:
+
+- **Anthropic API key** (`pip install music-scout[ai]` + `ANTHROPIC_API_KEY`, or `anthropic_api_key` in `config.yaml`) — preferred.
+- **`claude` CLI** (Claude Code installed) — used if no API key.
+- **Neither** — falls back to the built-in generic parser. The tool still works; you just fix odd feeds by hand.
+
+```bash
+music-scout sources add https://someblog.com/feed   # auto-derives a recipe if a backend is available
+music-scout sources fix someblog                     # re-derive for one feed
+music-scout sources fix --all                         # retrofit recipes onto every RSS source
+```
+
+If the LLM decides a feed doesn't actually name individual songs (a pure review or news feed), it says so instead of inventing a recipe.
 
 ## Where stuff lives
 

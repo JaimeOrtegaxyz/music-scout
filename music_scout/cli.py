@@ -152,6 +152,33 @@ def sources_remove(source_id: str) -> None:
     console.print(f"[green]removed[/green] {source_id}")
 
 
+@sources.command("fix")
+@click.argument("source_id", required=False)
+@click.option("--all", "fix_all", is_flag=True, help="Re-derive recipes for every RSS source.")
+def sources_fix(source_id: str | None, fix_all: bool) -> None:
+    """Derive (or refresh) an LLM parse recipe for a messy RSS feed.
+
+    Use after adding a feed whose titles parse poorly, or to retrofit recipes
+    onto sources added before this feature existed.
+    """
+    existing = load_sources()
+    if fix_all:
+        targets = [s for s in existing if s.type == "rss"]
+    elif source_id:
+        targets = [s for s in existing if s.id == source_id]
+        if not targets:
+            console.print(f"[red]no such source[/red]: {source_id}")
+            return
+    else:
+        console.print("Pass a source id or --all.")
+        return
+    for s in targets:
+        console.print(f"[bold]{s.id}[/bold] — {s.name}")
+        wizard.derive_recipe_for(s)  # mutates s.parse in place
+    save_sources(existing)
+    console.print("[green]saved[/green]")
+
+
 # ---- schedule subgroup ----
 
 @cli.group()
