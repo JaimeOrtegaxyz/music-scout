@@ -45,7 +45,7 @@ def init() -> None:
 
 @cli.command()
 def run() -> None:
-    """Fetch, filter, bucket, add. What launchd calls daily."""
+    """Fetch, resolve, year-filter, add. What launchd calls daily."""
     _setup_logging()
     cfg = Config.load()
     if not cfg.spotify.client_id:
@@ -82,9 +82,9 @@ def status() -> None:
     console.print(f"launchd:            {scheduler.status()}")
     if added_today:
         t = Table(title="Today's adds", show_lines=False)
-        t.add_column("Artist"); t.add_column("Title"); t.add_column("Bucket")
+        t.add_column("Artist"); t.add_column("Title"); t.add_column("Released")
         for tr in added_today:
-            t.add_row(tr.artist, tr.title, tr.bucket or "—")
+            t.add_row(tr.artist, tr.title, tr.release_date or "—")
         console.print(t)
 
 

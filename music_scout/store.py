@@ -19,12 +19,11 @@ from typing import Iterator
 from .paths import STATE_DB_PATH, ensure_dirs
 
 # Track lifecycle. Terminal states never auto-retry; reversible ones do.
-STATUS_PENDING = "pending_resolve"     # just fetched, not searched yet
+STATUS_PENDING = "pending_resolve"        # just fetched, not searched yet
 STATUS_NOT_ON_SPOTIFY = "not_on_spotify"  # searched, no hit — retry tomorrow
-STATUS_BLOCKED_GENRE = "blocked_genre"    # artist genre matched blocklist
 STATUS_NOT_CURRENT_YEAR = "not_current_year"  # release_date outside year
-STATUS_ADDED = "added"                  # in the Spotify playlist
-STATUS_ERROR = "error"                  # transient failure — retry tomorrow
+STATUS_ADDED = "added"                    # in the playlist
+STATUS_ERROR = "error"                    # transient failure — retry tomorrow
 
 RETRYABLE = {STATUS_NOT_ON_SPOTIFY, STATUS_ERROR}
 
@@ -48,8 +47,6 @@ CREATE TABLE IF NOT EXISTS tracks (
     source_url      TEXT,
     spotify_uri     TEXT,
     release_date    TEXT,
-    artist_genres   TEXT,            -- JSON-ish comma-joined list
-    bucket          TEXT,
     status          TEXT NOT NULL,
     error_msg       TEXT,
     attempts        INTEGER NOT NULL DEFAULT 0,
@@ -71,8 +68,6 @@ class Track:
     source_url: str | None = None
     spotify_uri: str | None = None
     release_date: str | None = None
-    artist_genres: str | None = None
-    bucket: str | None = None
     status: str = STATUS_PENDING
     error_msg: str | None = None
     attempts: int = 0
@@ -133,8 +128,6 @@ def mark(
     status: str,
     spotify_uri: str | None = None,
     release_date: str | None = None,
-    artist_genres: str | None = None,
-    bucket: str | None = None,
     error_msg: str | None = None,
 ) -> None:
     """Advance a track's state. Only non-None fields are written."""
@@ -144,8 +137,6 @@ def mark(
     for col, val in (
         ("spotify_uri", spotify_uri),
         ("release_date", release_date),
-        ("artist_genres", artist_genres),
-        ("bucket", bucket),
         ("error_msg", error_msg),
     ):
         if val is not None:

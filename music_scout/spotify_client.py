@@ -1,5 +1,16 @@
 """Thin wrapper over spotipy. Centralizes auth, rate-limit pacing, and the
-narrow set of operations music-scout actually performs."""
+narrow set of operations music-scout performs.
+
+NOTE: As of Spotify's February 2026 Web API changes, several playlist
+endpoints moved and spotipy (2.26.0, the latest release) still calls the old,
+now-403 paths. So for create / add / read-items we bypass spotipy's helper
+methods and hit the new endpoints through its internal transport (_get/_post),
+which keeps spotipy's token refresh and session handling. The new shapes:
+    create     POST   /me/playlists                {name, public, description}
+    add        POST   /playlists/{id}/items        {uris:[...], position:0}
+    read items GET    /playlists/{id}/items        each row is {"item": {...}}
+                                                    (was {"track": {...}})
+"""
 
 from __future__ import annotations
 
@@ -11,19 +22,16 @@ from spotipy.oauth2 import SpotifyOAuth
 
 from .config import Config
 
-# Read/write playlists + read user-library so we can list existing playlists
-# during the wizard.
 SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
 
-# Default pacing — Spotify allows a lot, but artist/track-info lookups in
-# tight loops have triggered 429s in the past. Sleep a beat between calls.
+# Default pacing — Spotify tolerates a lot, but tight loops have triggered 429s
+# in the past. Sleep a beat between calls.
 DEFAULT_DELAY_SEC = 0.15
 
 
 @dataclass
 class SpotifyTrack:
     uri: str
-    artist_id: str
     artist_name: str
     title: str
     release_date: str  # "YYYY", "YYYY-MM", or "YYYY-MM-DD"
@@ -46,9 +54,8 @@ class SpotifyClient:
             redirect_uri="http://127.0.0.1:8765/callback",
             scope=SCOPES,
             open_browser=True,
-            # show_dialog forces the consent screen even on subsequent auths,
-            # which is what we want when the app is shared with another tool
-            # (e.g. cliamp) and the user might need to re-approve new scopes.
+            # Force the consent screen even on repeat auths — relevant when the
+            # app is shared with another tool (cliamp) and scopes differ.
             show_dialog=True,
             cache_path=str(DATA_DIR / ".spotipy-cache"),
         )
@@ -62,6 +69,8 @@ class SpotifyClient:
     def search_track(self, artist: str, title: str, market: str = "US") -> SpotifyTrack | None:
         q = f'track:"{title}" artist:"{artist}"'
         try:
+            # Spotify caps search at 10 results/request as of Feb 2026; we only
+            # need the top hit anyway.
             res = self._sp.search(q=q, type="track", limit=1, market=market)
         except spotipy.SpotifyException as e:
             if e.http_status == 429:
@@ -76,80 +85,108 @@ class SpotifyClient:
         t = items[0]
         return SpotifyTrack(
             uri=t["uri"],
-            artist_id=t["artists"][0]["id"],
             artist_name=t["artists"][0]["name"],
             title=t["name"],
             release_date=t["album"]["release_date"],
         )
 
-    def artist_genres(self, artist_id: str) -> list[str]:
+    def track_by_uri(self, uri: str) -> SpotifyTrack | None:
+        """Resolve a SpotifyTrack from a URI a source already handed us."""
+        track_id = uri.split(":")[-1]
         try:
-            data = self._sp.artist(artist_id)
-        except spotipy.SpotifyException as e:
-            if e.http_status == 429:
-                self._handle_429(e)
-                return self.artist_genres(artist_id)
-            raise
+            t = self._sp.track(track_id)
+        except spotipy.SpotifyException:
+            return None
         finally:
             self._sleep()
-        return list(data.get("genres") or [])
+        return SpotifyTrack(
+            uri=t["uri"],
+            artist_name=t["artists"][0]["name"],
+            title=t["name"],
+            release_date=t["album"]["release_date"],
+        )
 
-    # ---- playlist ops ----
+    # ---- playlist ops (Feb-2026 endpoints via spotipy transport) ----
 
     def me(self) -> dict:
         return self._sp.current_user()
 
-    def list_my_playlists(self) -> list[dict]:
-        out: list[dict] = []
-        offset = 0
-        while True:
-            page = self._sp.current_user_playlists(limit=50, offset=offset)
-            items = page.get("items") or []
-            out.extend(items)
-            if len(items) < 50:
-                return out
-            offset += 50
-            self._sleep()
-
-    def create_playlist(self, user_id: str, name: str, description: str = "") -> str:
-        p = self._sp.user_playlist_create(
-            user=user_id, name=name, public=False, description=description
+    def create_playlist(self, name: str, description: str = "") -> str:
+        # New endpoint: POST /me/playlists (old /users/{id}/playlists → 403).
+        resp = self._sp._post(
+            "me/playlists",
+            payload={"name": name, "public": False, "description": description},
         )
         self._sleep()
-        return p["id"]
+        return resp["id"]
 
     def playlist_track_uris(self, playlist_id: str) -> set[str]:
-        """All current URIs in the playlist (dedupe before adding)."""
+        """All current URIs in the playlist (so we don't add duplicates)."""
         uris: set[str] = set()
         offset = 0
         while True:
-            page = self._sp.playlist_items(
-                playlist_id, fields="items.track.uri,total", offset=offset, limit=100
+            # New endpoint: GET /playlists/{id}/items. Each row is {"item": {...}}
+            # now (was {"track": {...}}); read both for safety.
+            page = self._sp._get(
+                f"playlists/{playlist_id}/items",
+                fields="items(item(uri),track(uri)),next",
+                offset=offset, limit=100,
             )
             items = page.get("items") or []
-            for it in items:
-                t = (it or {}).get("track") or {}
-                if t.get("uri"):
-                    uris.add(t["uri"])
-            if len(items) < 100:
+            for row in items:
+                obj = row.get("item") or row.get("track") or {}
+                if obj.get("uri"):
+                    uris.add(obj["uri"])
+            if not page.get("next"):
                 return uris
             offset += 100
             self._sleep()
 
+    def playlist_tracks(self, playlist_id: str) -> list[SpotifyTrack]:
+        """Read a playlist's tracks as SpotifyTracks (used by the
+        spotify-playlist source adapter)."""
+        out: list[SpotifyTrack] = []
+        offset = 0
+        while True:
+            page = self._sp._get(
+                f"playlists/{playlist_id}/items",
+                fields="items(item(uri,name,artists(name),album(release_date)),"
+                       "track(uri,name,artists(name),album(release_date))),next",
+                offset=offset, limit=100,
+            )
+            items = page.get("items") or []
+            for row in items:
+                t = row.get("item") or row.get("track") or {}
+                if not t.get("uri"):
+                    continue
+                artists = t.get("artists") or [{}]
+                out.append(SpotifyTrack(
+                    uri=t["uri"],
+                    artist_name=artists[0].get("name", ""),
+                    title=t.get("name", ""),
+                    release_date=(t.get("album") or {}).get("release_date", ""),
+                ))
+            if not page.get("next"):
+                return out
+            offset += 100
+            self._sleep()
+
     def add_to_playlist(self, playlist_id: str, uris: list[str]) -> None:
-        # Insert at the top (position=0) so the newest add is always first when
-        # you open the playlist. Since pipeline.py adds one track per call,
-        # each new track pushes the previous one down — newest naturally floats
-        # to the top across consecutive adds. Spotify caps at 100 URIs per request.
+        # New endpoint: POST /playlists/{id}/items (old /tracks → 403).
+        # position=0 puts the newest add at the top; since the pipeline adds one
+        # track per call, each push floats the latest to the very top. Spotify
+        # caps at 100 URIs per request.
         for i in range(0, len(uris), 100):
             chunk = uris[i:i + 100]
-            self._sp.playlist_add_items(playlist_id, chunk, position=0)
+            self._sp._post(
+                f"playlists/{playlist_id}/items",
+                payload={"uris": chunk, "position": 0},
+            )
             self._sleep()
 
     # ---- 429 handling ----
 
     def _handle_429(self, e: spotipy.SpotifyException) -> None:
-        # spotipy surfaces the Retry-After header on the underlying response.
         retry = 5
         try:
             retry = int(e.headers.get("Retry-After", "5"))

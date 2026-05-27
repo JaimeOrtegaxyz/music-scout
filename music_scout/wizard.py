@@ -1,8 +1,8 @@
 """First-run interactive setup.
 
-Walks the user through Spotify auth, bucket creation, blocklist, sources,
-and offers to install the launchd plist. Re-runnable safely; existing
-config values are shown as defaults and accepted with Enter.
+Walks the user through Spotify auth, creating the single playlist, choosing
+sources, and installing the launchd job. Re-runnable safely; existing config
+values are shown as defaults and accepted with Enter.
 """
 
 from __future__ import annotations
@@ -30,8 +30,7 @@ def run() -> None:
     cfg.spotify.user_id = me["id"]
     console.print(f"  → Authed as [cyan]{me.get('display_name') or me['id']}[/cyan]")
 
-    _step_buckets(cfg, client)
-    _step_blocklist(cfg)
+    _step_playlist(cfg, client)
     cfg.save()
 
     _step_sources()
@@ -43,13 +42,17 @@ def run() -> None:
 
 
 def _step_spotify_auth(cfg: Config) -> None:
-    console.print("\n[bold]1/5 Spotify auth[/bold]")
+    console.print("\n[bold]1/4 Spotify auth[/bold]")
     console.print(
         "  You need a Spotify Developer App. If you don't have one:\n"
         "    1. Visit [link]https://developer.spotify.com/dashboard[/link]\n"
         "    2. Click 'Create app' — name it whatever, e.g. 'music-scout'.\n"
         "    3. Set redirect URI to: [bold]http://127.0.0.1:8765/callback[/bold]\n"
-        "    4. Copy the Client ID and Client Secret from the app settings.\n"
+        "    4. Enable the [bold]Web API[/bold] and add yourself under "
+        "User Management.\n"
+        "    5. Copy the Client ID and Client Secret from the app settings.\n"
+        "  [dim]Note: Spotify requires the app owner to have Premium "
+        "(Feb 2026 policy).[/dim]\n"
     )
     cfg.spotify.client_id = Prompt.ask(
         "  Client ID", default=cfg.spotify.client_id or None
@@ -59,104 +62,54 @@ def _step_spotify_auth(cfg: Config) -> None:
     )
 
 
-def _step_buckets(cfg: Config, client: SpotifyClient) -> None:
-    console.print("\n[bold]2/5 Genre buckets[/bold]")
+def _step_playlist(cfg: Config, client: SpotifyClient) -> None:
+    console.print("\n[bold]2/4 Playlist[/bold]")
     console.print(
-        "  These are the broad categories you want new tracks sorted into.\n"
-        "  3–5 works well. Examples: rock, electronic, pop, hip-hop, folk.\n"
+        "  Everything music-scout finds (current-year tracks only) lands in a\n"
+        "  single Spotify playlist, newest on top.\n"
     )
-    if cfg.buckets:
+    if cfg.playlist_id:
         console.print(
-            f"  Current: [cyan]{', '.join(cfg.buckets.keys())}[/cyan]"
+            f"  Already linked: [cyan]{cfg.playlist_name}[/cyan] ({cfg.playlist_id})"
         )
-        if not Confirm.ask("  Replace?", default=False):
+        if not Confirm.ask("  Create a new one?", default=False):
             return
 
-    raw = Prompt.ask("  Buckets (comma-separated)", default="rock, electronic, pop")
-    labels = [b.strip().lower() for b in raw.split(",") if b.strip()]
-
-    DEFAULT_KEYWORDS = {
-        "rock":       ["rock", "indie", "post-punk", "shoegaze", "alt", "garage"],
-        "electronic": ["electronic", "house", "techno", "ambient", "idm", "club", "dub", "dance"],
-        "pop":        ["pop", "synth", "hyperpop", "dream pop"],
-        "hip-hop":    ["hip hop", "rap", "trap", "r&b", "soul", "drill"],
-        "folk":       ["folk", "americana", "country", "singer-songwriter", "alt-country"],
-        "jazz":       ["jazz", "fusion", "bossa"],
-        "metal":      ["metal", "hardcore", "doom", "sludge"],
-    }
-    cfg.buckets = {
-        label: DEFAULT_KEYWORDS.get(label, [label])
-        for label in labels
-    }
-    cfg.catchall_bucket = Prompt.ask(
-        "  Catchall bucket (for anything that doesn't match)",
-        default="catchall",
-    )
-    if cfg.catchall_bucket not in cfg.buckets:
-        cfg.buckets[cfg.catchall_bucket] = []
-
-    # Create one playlist per bucket in the user's Spotify.
-    console.print("\n  Creating Spotify playlists…")
-    for label in cfg.buckets:
-        existing = cfg.playlist_ids.get(label)
-        if existing:
-            console.print(f"    • {label} — already linked ({existing})")
-            continue
-        title = f"Music Scout — {label.title()}"
-        try:
-            pid = client.create_playlist(
-                cfg.spotify.user_id, title,
-                description="Auto-curated by music-scout. Current-year tracks from configured blogs.",
-            )
-        except spotipy.SpotifyException as e:
-            _explain_playlist_403(e)
-            raise SystemExit(1)
-        cfg.playlist_ids[label] = pid
-        console.print(f"    • [green]created[/green] {title} ({pid})")
+    cfg.playlist_name = Prompt.ask("  Playlist name", default=cfg.playlist_name)
+    try:
+        pid = client.create_playlist(
+            cfg.playlist_name,
+            description="Auto-curated by music-scout. Current-year tracks from my sources.",
+        )
+    except spotipy.SpotifyException as e:
+        _explain_403(e)
+        raise SystemExit(1)
+    cfg.playlist_id = pid
+    console.print(f"  [green]created[/green] {cfg.playlist_name} ({pid})")
 
 
-def _explain_playlist_403(e: spotipy.SpotifyException) -> None:
-    """A 403 here almost always means the Spotify app's dashboard settings
-    haven't enabled Web API or haven't added the current user as a tester."""
+def _explain_403(e: spotipy.SpotifyException) -> None:
     if e.http_status != 403:
         console.print(f"\n[red]Spotify error:[/red] {e}")
         return
     console.print(
-        "\n[red]Spotify rejected the playlist creation (403 Forbidden).[/red]\n"
-        "  Reads work, scopes are correct, but writes are blocked. Two things "
-        "to check on the app's Dev Dashboard:\n"
-        "    1. [bold]Settings → APIs[/bold]: 'Web API' must be checked. If the\n"
-        "       app was originally set up for cliamp, only 'Web Playback SDK'\n"
-        "       may be enabled.\n"
-        "    2. [bold]User Management[/bold]: your own Spotify account must\n"
-        "       be in the testers list (apps default to Development Mode,\n"
-        "       max 25 users, all explicitly added).\n"
-        "  After fixing, delete the cached token and re-run:\n"
-        "    [bold]rm data/.spotipy-cache && music-scout init[/bold]"
+        "\n[red]Spotify rejected playlist creation (403 Forbidden).[/red]\n"
+        "  Check on the app's Dev Dashboard:\n"
+        "    • [bold]Web API[/bold] is enabled (Edit Settings → APIs).\n"
+        "    • Your Spotify account is in [bold]User Management[/bold].\n"
+        "    • The app owner has an active [bold]Premium[/bold] subscription\n"
+        "      (required since Feb 2026).\n"
+        "  Then: [bold]music-scout auth reset && music-scout init[/bold]"
     )
-
-
-def _step_blocklist(cfg: Config) -> None:
-    console.print("\n[bold]3/5 Genre blocklist[/bold]")
-    console.print(
-        "  Any genre keyword in this list causes a track to be discarded,\n"
-        "  even if it comes from a source you trust. Substring match.\n"
-        "  Examples: metal, country, christian.\n"
-    )
-    current = ", ".join(cfg.blocklist) if cfg.blocklist else "(empty)"
-    console.print(f"  Current: [cyan]{current}[/cyan]")
-    raw = Prompt.ask("  Blocklist (comma-separated, or empty to keep)", default="")
-    if raw.strip():
-        cfg.blocklist = [b.strip().lower() for b in raw.split(",") if b.strip()]
 
 
 def _step_sources() -> None:
-    console.print("\n[bold]4/5 Sources[/bold]")
+    console.print("\n[bold]3/4 Sources[/bold]")
     console.print(
-        "  Where should music-scout look for new tracks? Three kinds:\n"
+        "  Where should music-scout look for new tracks? Enter one at a time:\n"
         "    • RSS feed URL  (preferred — fastest, most reliable)\n"
         "    • Blog homepage (we'll try to find its RSS for you)\n"
-        "    • Spotify playlist URL  (e.g. for editorial playlists)\n"
+        "    • Spotify playlist URL  (e.g. an editorial playlist)\n"
         "    • Type 'hypem' to add the Hype Machine popular feed\n"
         "  Press Enter on an empty line when done.\n"
     )
@@ -187,7 +140,6 @@ def _interpret_source_entry(entry: str, existing_ids: set[str]) -> Source | None
         name = Prompt.ask("    Name for this playlist source", default=sid)
         return Source(id=sid, type="spotify-playlist", name=name, playlist_id=pid)
 
-    # RSS or homepage. Probe the URL.
     if entry.endswith(".xml") or "/feed" in entry_lc or "/rss" in entry_lc:
         feed_url = entry
     else:
@@ -224,7 +176,7 @@ def _unique_id(base: str, taken: set[str]) -> str:
 
 
 def _step_schedule() -> None:
-    console.print("\n[bold]5/5 Daily auto-run[/bold]")
+    console.print("\n[bold]4/4 Daily auto-run[/bold]")
     if Confirm.ask("  Install launchd plist to run daily?", default=True):
         from . import scheduler
         scheduler.install()

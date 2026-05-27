@@ -6,28 +6,14 @@ spotify:
   refresh_token: ""    # written automatically after first OAuth handshake
   user_id: ""          # ditto
 
-# Genre buckets → Spotify playlists. Each label gets one playlist created
-# at wizard time, named "Music Scout — <Label>".
-# Keyword match is substring, case-insensitive, against artist.genres[].
-buckets:
-  rock:        [rock, indie, post-punk, shoegaze, alt, garage]
-  electronic:  [electronic, house, techno, ambient, idm, club, dub, dance]
-  pop:         [pop, synth, hyperpop, dream pop]
-
-# Where unmatched tracks land. Must be a key in `buckets` (auto-added if absent).
-catchall_bucket: catchall
-
-# Discard any track whose artist has a genre containing one of these substrings.
-blocklist:
-  - metal
-
-# Filled by the wizard after playlists are created. Don't edit by hand
-# unless you know what you're doing — they need to match buckets above.
-playlist_ids: {}
+# The single playlist everything lands in. Created by the wizard on first run;
+# playlist_id is filled in then. Newest tracks are inserted at the top.
+playlist_id: ""
+playlist_name: Music Scout
 
 # Default search market for Spotify queries.
 market: US
 
-# Leave unset to use the current calendar year. Set explicitly to backfill
-# a specific year, e.g. for a one-time "everything from 2025" pull.
+# Leave unset to use the current calendar year. Set explicitly to backfill a
+# specific year, e.g. for a one-time "everything from 2025" pull.
 # current_year: 2026
