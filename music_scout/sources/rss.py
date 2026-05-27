@@ -30,17 +30,41 @@ SPOTIFY_TRACK_RE = re.compile(
     r"open\.spotify\.com/(?:embed/)?track/([A-Za-z0-9]+)"
 )
 
-# Common "Artist <sep> Title" headlines.
-SEPARATORS = [" — ", " – ", " - ", ": ", " | "]
+# Common "Artist <sep> Title" headlines. Include CJK separators (、) since some
+# blogs post in Japanese ("Artist、'Song'を公開").
+SEPARATORS = [" — ", " – ", " - ", ": ", " | ", "、"]
+# Editorial lead-ins that precede the real "Artist - Title" — stripped first.
 LEAD_NOISE_RE = re.compile(
-    r"^\s*(stream|listen|watch|premiere|new music|video|mp3)[:|\s\-—–]+",
+    r"^\s*(stream|listen(?:\s+to)?|watch|premiere|exclusive|new music|new song|"
+    r"new track|video|mp3|single|track|song|ep|album)[:|\s\-—–]+",
     re.IGNORECASE,
 )
+# Quote characters to peel off artist/title, including smart quotes.
+_QUOTES = "\"'“”‘’«»「」『』"
+
+USER_AGENT = "music-scout/0.1 (+https://github.com/JaimeOrtegaxyz/music-scout)"
+
+
+def _parse_feed(url: str) -> "feedparser.FeedParserDict":
+    """Fetch a feed via httpx (uses certifi's CA bundle — feedparser's own
+    urllib fetch fails with SSL CERTIFICATE_VERIFY_FAILED on macOS framework
+    Python) and parse the bytes. Also sends a real User-Agent, since some
+    blogs reject the default feedparser one."""
+    try:
+        r = httpx.get(
+            url, timeout=15, follow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+        )
+        r.raise_for_status()
+        return feedparser.parse(r.content)
+    except Exception:
+        # Last-ditch: let feedparser try directly (rarely helps, but harmless).
+        return feedparser.parse(url)
 
 
 @register("rss")
 def fetch(source: Source) -> Iterator[Candidate]:
-    feed = feedparser.parse(source.url)
+    feed = _parse_feed(source.url)
     for entry in feed.entries[:50]:  # newest 50 — keeps daily runs bounded
         post_url = entry.get("link", source.url)
         body = _entry_body(entry)
@@ -102,8 +126,10 @@ def _from_title(entry, post_url: str) -> Iterator[Candidate]:
     for sep in SEPARATORS:
         if sep in title:
             artist, track = title.split(sep, 1)
-            artist = artist.strip().strip('"').strip()
-            track = track.strip().strip('"').strip()
+            artist = artist.strip().strip(_QUOTES).strip()
+            track = track.strip().strip(_QUOTES).strip()
+            # Drop the trailing "を公開"/"を配信" verb some JP blogs append.
+            track = re.sub(r"を(公開|配信|リリース).*$", "", track).strip(_QUOTES).strip()
             if artist and track:
                 yield Candidate(
                     artist=artist, title=track, source_url=post_url
