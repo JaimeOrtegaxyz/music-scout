@@ -10,7 +10,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from . import scheduler, store, wizard
+from . import banner, scheduler, store, wizard
 from .config import Config, load_sources, save_sources, Source
 from .paths import LOGS_DIR, ensure_dirs
 from .spotify_client import SpotifyClient
@@ -34,6 +34,9 @@ def _setup_logging() -> None:
 @click.group()
 def cli() -> None:
     """music-scout — daily Spotify scraper from blogs + playlists."""
+    # Greet on every interactive invocation; stays out of launchd logs since
+    # print_banner only emits to a TTY.
+    banner.print_banner()
 
 
 @cli.command()
