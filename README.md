@@ -21,10 +21,13 @@ Current-year only. Older stuff gets logged and ignored. Tracks that aren't on Sp
 ```bash
 git clone https://github.com/JaimeOrtegaxyz/music-scout ~/Documents/GitHub/music-scout
 cd ~/Documents/GitHub/music-scout
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pipx install -e .          # global `music-scout`, runs from any directory
 music-scout init
 ```
+
+[pipx](https://pipx.pypa.io) is the trick that makes `music-scout` work from anywhere: it drops the launcher into `~/.local/bin` (isolated from your other Python). No `pipx`? `brew install pipx && pipx ensurepath`, then restart your shell so `~/.local/bin` lands on `PATH`.
+
+Prefer a plain venv? `python3 -m venv .venv && .venv/bin/pip install -e .` works too — but then `music-scout` only lives inside the venv, so you either activate it first or call `.venv/bin/music-scout` by full path.
 
 `init` walks you through it: Spotify auth, naming the playlist, adding your sources, and installing the daily job. Answers land in `data/config.yaml` and `data/sources.yaml` — edit them by hand whenever.
 
