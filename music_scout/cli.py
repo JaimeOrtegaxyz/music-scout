@@ -1,5 +1,5 @@
-"""Click-based CLI. Subcommand is what launchd calls (`run`) and what the
-user invokes for setup, retries, and listening."""
+"""Click-based CLI. The `run` subcommand is what launchd calls; the rest are
+for setup, source management, and retries."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from . import cliamp as cliamp_mod
 from . import scheduler, store, wizard
 from .config import Config, load_sources, save_sources, Source
 from .paths import LOGS_DIR, ensure_dirs
@@ -86,13 +85,6 @@ def status() -> None:
         for tr in added_today:
             t.add_row(tr.artist, tr.title, tr.release_date or "—")
         console.print(t)
-
-
-@cli.command()
-def listen() -> None:
-    """Launch cliamp with today's adds queued."""
-    msg = cliamp_mod.launch_with_today()
-    console.print(msg)
 
 
 # ---- auth subgroup ----

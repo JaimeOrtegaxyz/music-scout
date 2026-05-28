@@ -1,6 +1,6 @@
 ---
 name: music-scout
-description: Manage the music-scout daily Spotify scraper. Use when the user wants to add/remove blog sources, check what was added recently, debug a failing source, retry tracks that weren't on Spotify before, or launch cliamp to listen to today's adds. Triggers on /music-scout, mentions of "scout", "my music blogs", "new tracks today", or any request to tweak the daily music-fetching pipeline.
+description: Manage the music-scout daily Spotify scraper. Use when the user wants to add/remove blog sources, check what was added recently, debug a failing source, fix a feed that parses badly, or retry tracks that weren't on Spotify before. Triggers on /music-scout, mentions of "scout", "my music blogs", "new tracks today", or any request to tweak the daily music-fetching pipeline.
 ---
 
 # music-scout
@@ -62,6 +62,6 @@ tail -f data/logs/run-$(date +%Y-%m-%d).log
 - Auth: Spotify Developer App OAuth (client_id/secret + refresh_token in `data/config.yaml`).
 - One playlist: `config.yaml` `playlist_id` / `playlist_name`, created by the wizard.
 - Scheduler: launchd plist at `scripts/com.jaimeortega.music-scout.plist`, installed to `~/Library/LaunchAgents/`, runs daily at 09:00.
-- Listening: `music-scout listen` launches [cliamp](https://github.com/bjarneo/cliamp) with today's adds queued.
+- Listening: [cliamp](https://github.com/bjarneo/cliamp) is an interactive TUI — it can't take Spotify URIs as args, so there's no `listen` command. The user runs `cliamp` separately and picks the "Music Scout" playlist from its Spotify browser. cliamp shares the same Spotify dev app (redirect `127.0.0.1:19872/login`).
 - Region: hardcoded to `US`.
 - Repo: `~/Documents/GitHub/music-scout/`. README at the root has the user-facing version.
