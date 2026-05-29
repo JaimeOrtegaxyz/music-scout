@@ -51,11 +51,43 @@ def run() -> None:
     _setup_logging()
     cfg = Config.load()
     if not cfg.spotify.client_id:
-        console.print("[red]Not configured.[/red] Run [bold]music-scout init[/bold] first.")
+        console.print("[red]Not configured.[/red] Run [bold]scout init[/bold] first.")
         raise SystemExit(1)
     from .pipeline import run as run_pipeline
     client = SpotifyClient(cfg)
     counts = run_pipeline(cfg, client)
+    _print_summary(counts)
+
+
+@cli.command()
+@click.option("--source", "source_id", default=None,
+              help="Only backfill this source ID (see `sources list`).")
+@click.option("--max-adds", default=None, type=int,
+              help="Optional cap on tracks added this run (default: unlimited).")
+@click.option("--max-pages", default=200, show_default=True,
+              help="Safety cap on feed pages crawled per source.")
+def backfill(source_id: str | None, max_adds: int | None, max_pages: int) -> None:
+    """Page back through each RSS feed's archive and add every current-year track.
+
+    Walks the feed newest-first until posts predate the current year, so it
+    catches posts from earlier this year that the daily run (newest page only)
+    never saw — useful after adding a new blog. Re-runnable: if a Spotify
+    cooldown interrupts it, remaining tracks resume on the next run.
+    """
+    _setup_logging()
+    cfg = Config.load()
+    if not cfg.spotify.client_id:
+        console.print("[red]Not configured.[/red] Run [bold]scout init[/bold] first.")
+        raise SystemExit(1)
+    from .pipeline import run_backfill
+    client = SpotifyClient(cfg)
+    try:
+        counts = run_backfill(
+            cfg, client, source_id=source_id, max_adds=max_adds, max_pages=max_pages
+        )
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise SystemExit(1)
     _print_summary(counts)
 
 

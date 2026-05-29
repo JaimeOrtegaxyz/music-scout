@@ -28,6 +28,21 @@ SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private u
 # in the past. Sleep a beat between calls.
 DEFAULT_DELAY_SEC = 0.15
 
+# A normal 429 returns a short Retry-After (seconds) we just wait out. But
+# development-mode apps that push too hard can get a long (hours-scale) soft
+# lockout, signaled by a large Retry-After. Sleeping + retrying into that only
+# digs deeper, so above this threshold we bail and let the caller resume later.
+LOCKOUT_THRESHOLD_SEC = 60
+
+
+class RateLimitLockout(Exception):
+    """Spotify returned a Retry-After longer than we'll wait — likely the
+    dev-mode soft lockout. Abort cleanly; progress is saved per-track."""
+
+    def __init__(self, seconds: int):
+        self.seconds = seconds
+        super().__init__(f"Spotify rate-limit cooldown of {seconds}s")
+
 
 @dataclass
 class SpotifyTrack:
@@ -95,7 +110,10 @@ class SpotifyClient:
         track_id = uri.split(":")[-1]
         try:
             t = self._sp.track(track_id)
-        except spotipy.SpotifyException:
+        except spotipy.SpotifyException as e:
+            if e.http_status == 429:
+                self._handle_429(e)  # raises RateLimitLockout on long cooldowns
+                return self.track_by_uri(uri)
             return None
         finally:
             self._sleep()
@@ -178,10 +196,20 @@ class SpotifyClient:
         # caps at 100 URIs per request.
         for i in range(0, len(uris), 100):
             chunk = uris[i:i + 100]
-            self._sp._post(
-                f"playlists/{playlist_id}/items",
-                payload={"uris": chunk, "position": 0},
-            )
+            try:
+                self._sp._post(
+                    f"playlists/{playlist_id}/items",
+                    payload={"uris": chunk, "position": 0},
+                )
+            except spotipy.SpotifyException as e:
+                if e.http_status == 429:
+                    self._handle_429(e)  # raises RateLimitLockout on long cooldowns
+                    self._sp._post(
+                        f"playlists/{playlist_id}/items",
+                        payload={"uris": chunk, "position": 0},
+                    )
+                else:
+                    raise
             self._sleep()
 
     # ---- 429 handling ----
@@ -192,4 +220,6 @@ class SpotifyClient:
             retry = int(e.headers.get("Retry-After", "5"))
         except Exception:
             pass
-        time.sleep(min(retry, 60))
+        if retry > LOCKOUT_THRESHOLD_SEC:
+            raise RateLimitLockout(retry)
+        time.sleep(retry)

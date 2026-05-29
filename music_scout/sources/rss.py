@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from typing import Iterator
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import feedparser
 import httpx
@@ -62,26 +62,104 @@ def _parse_feed(url: str) -> "feedparser.FeedParserDict":
         return feedparser.parse(url)
 
 
+def _recipe_of(source: Source) -> dict | None:
+    """The LLM parse recipe saved for this feed, if any."""
+    p = source.parse
+    return p if isinstance(p, dict) and p.get("regex") else None
+
+
+def _candidates_from_entry(entry, recipe: dict | None, source_url: str) -> Iterator[Candidate]:
+    """The three extraction strategies, tried in order, for one feed entry.
+    Shared by the daily `fetch` and the paginating `fetch_history`."""
+    post_url = entry.get("link", source_url)
+    body = _entry_body(entry)
+    # Strategy 1: every Spotify embed/link in the post body.
+    embeds = list(_from_spotify_embeds(body, entry, post_url))
+    if embeds:
+        yield from embeds
+        return
+    # Strategy 2: an LLM-derived recipe for this feed, if one was saved.
+    if recipe:
+        cand = _from_recipe(entry, recipe, post_url)
+        if cand:
+            yield cand
+        return
+    # Strategy 3 (fallback): parse the post title as "Artist - Title".
+    yield from _from_title(entry, post_url)
+
+
 @register("rss")
-def fetch(source: Source) -> Iterator[Candidate]:
+def fetch(source: Source, *, max_entries: int | None = 50) -> Iterator[Candidate]:
     feed = _parse_feed(source.url)
-    recipe = source.parse if isinstance(source.parse, dict) and source.parse.get("regex") else None
-    for entry in feed.entries[:50]:  # newest 50 — keeps daily runs bounded
-        post_url = entry.get("link", source.url)
-        body = _entry_body(entry)
-        # Strategy 1: every Spotify embed/link in the post body.
-        embeds = list(_from_spotify_embeds(body, entry, post_url))
-        if embeds:
-            yield from embeds
-            continue
-        # Strategy 2: an LLM-derived recipe for this feed, if one was saved.
-        if recipe:
-            cand = _from_recipe(entry, recipe, post_url)
-            if cand:
-                yield cand
-            continue
-        # Strategy 3 (fallback): parse the post title as "Artist - Title".
-        yield from _from_title(entry, post_url)
+    recipe = _recipe_of(source)
+    # Default: newest 50, keeps daily runs bounded.
+    entries = feed.entries if max_entries is None else feed.entries[:max_entries]
+    for entry in entries:
+        yield from _candidates_from_entry(entry, recipe, source.url)
+
+
+def _detect_platform(url: str) -> str:
+    """Which pagination scheme the feed uses. Blogger exposes
+    start-index/max-results; everything else we treat as WordPress (?paged=N)."""
+    if "blogspot.com" in url or "/feeds/posts/" in url:
+        return "blogger"
+    return "wordpress"
+
+
+def _page_url(base: str, page: int, platform: str) -> str:
+    """The URL for the Nth page of a feed (page is 1-based)."""
+    parts = urlparse(base)
+    q = dict(parse_qsl(parts.query))
+    if platform == "blogger":
+        per = 25  # Blogger's reliable max per request
+        q["start-index"] = str(1 + (page - 1) * per)
+        q["max-results"] = str(per)
+    else:  # wordpress
+        q["paged"] = str(page)
+    return urlunparse(parts._replace(query=urlencode(q)))
+
+
+def _entry_year(entry) -> int | None:
+    pp = entry.get("published_parsed") or entry.get("updated_parsed")
+    return pp.tm_year if pp else None
+
+
+def _entry_id(entry) -> str:
+    return entry.get("id") or entry.get("link") or entry.get("title", "")
+
+
+def fetch_history(
+    source: Source, *, since_year: int, max_pages: int = 200
+) -> Iterator[Candidate]:
+    """Walk a feed's pages newest-first, yielding candidates, until posts fall
+    before `since_year`. Used by `backfill` to reach posts the daily run (which
+    only sees the newest page) never fetched.
+
+    Stops on the first of: a page entirely older than `since_year`, an empty
+    page, a page we've already seen (feed ignores paging / clamps to the end),
+    or `max_pages` as a hard backstop. Entries with no parseable date are kept
+    (and counted as current) so a missing timestamp never cuts the crawl short.
+    """
+    recipe = _recipe_of(source)
+    platform = _detect_platform(source.url)
+    seen_ids: set[str] = set()
+    for page in range(1, max_pages + 1):
+        feed = _parse_feed(_page_url(source.url, page, platform))
+        if not feed.entries:
+            return
+        ids = [_entry_id(e) for e in feed.entries]
+        if ids and all(i in seen_ids for i in ids):
+            return  # repeat/clamp — feed isn't really paging
+        seen_ids.update(ids)
+
+        saw_current = False
+        for entry in feed.entries:
+            year = _entry_year(entry)
+            if year is None or year >= since_year:
+                saw_current = True
+                yield from _candidates_from_entry(entry, recipe, source.url)
+        if not saw_current:
+            return  # whole page predates the target year — we're done
 
 
 def _field_text(entry, field: str) -> str:
