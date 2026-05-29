@@ -21,13 +21,15 @@ Current-year only. Older stuff gets logged and ignored. Tracks that aren't on Sp
 ```bash
 git clone https://github.com/JaimeOrtegaxyz/music-scout ~/Documents/GitHub/music-scout
 cd ~/Documents/GitHub/music-scout
-pipx install -e .          # global `scout` command, runs from any directory
+./install.sh               # makes the `scout` command, runs from any directory
 scout init
 ```
 
-[pipx](https://pipx.pypa.io) is the trick that makes `scout` work from anywhere: it drops the launcher into `~/.local/bin` (isolated from your other Python). No `pipx`? `brew install pipx && pipx ensurepath`, then restart your shell so `~/.local/bin` lands on `PATH`.
+`install.sh` only needs `python3` >= 3.11. It creates a `.venv/` in the repo, editable-installs the package into it, and symlinks `scout` into `~/.local/bin` so it works from any directory. Re-run it whenever (e.g. after `git pull`) — it's idempotent. Add `--ai` to also pull in the optional LLM-recipe extra. If `~/.local/bin` isn't on your `PATH`, the script prints the one line to add to your `~/.zshrc`.
 
-Prefer a plain venv? `python3 -m venv .venv && .venv/bin/pip install -e .` works too — but then `scout` only lives inside the venv, so you either activate it first or call `.venv/bin/scout` by full path.
+> The install is **editable** on purpose: the app keeps its data — config, the SQLite track DB, logs — in `./data` inside the checkout, so it has to run from there. Your blogs and listening history therefore live alongside the repo but stay **out of git** (only the `*.example.yaml` templates are committed). Clone it anywhere, or hand it to someone else, and they start clean with their own `scout init`.
+
+To remove it: `scout schedule uninstall` (stop the daily job), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
 
 `init` walks you through it: Spotify auth, naming the playlist, adding your sources, and installing the daily job. Answers land in `data/config.yaml` and `data/sources.yaml` — edit them by hand whenever.
 

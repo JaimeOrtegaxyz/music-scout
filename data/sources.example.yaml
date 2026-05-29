@@ -1,4 +1,4 @@
-# Copy to sources.yaml or let `music-scout init` generate one. Three types:
+# Copy to sources.yaml or let `scout init` generate one. Three types:
 #   rss              — any RSS/Atom feed; we'll pull Spotify embeds first,
 #                      then fall back to artist/title parsing of post titles.
 #   hypem            — Hype Machine; defaults to the popular feed if no url.

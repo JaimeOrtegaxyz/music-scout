@@ -1,4 +1,4 @@
-# Copy to config.yaml or let `music-scout init` generate one.
+# Copy to config.yaml or let `scout init` generate one.
 # This file is gitignored once renamed because `spotify:` holds auth tokens.
 spotify:
   client_id: ""        # from developer.spotify.com → your app
