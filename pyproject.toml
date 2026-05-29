@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "music-scout"
 version = "0.1.0"
-description = "Auto-fetches current-year tracks from music blogs and Spotify playlists, sorts them into your genre buckets, and adds them to Spotify on a schedule."
+description = "Auto-fetches current-year tracks from music blogs and Spotify playlists and adds them to a single Spotify playlist on a schedule."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

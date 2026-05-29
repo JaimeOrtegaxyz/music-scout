@@ -27,7 +27,7 @@ sources:
     type: rss
     name: Stereogum
     url: https://www.stereogum.com/feed/
-    enabled: false  # high-volume — turn on once you've tuned the blocklist
+    enabled: false  # high-volume — enable only if you want a lot of daily adds
 
   - id: best-fit
     type: rss
