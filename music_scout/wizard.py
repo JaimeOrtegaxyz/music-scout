@@ -38,7 +38,7 @@ def run() -> None:
     _step_schedule()
 
     console.rule("[green]Setup complete[/green]")
-    console.print("\nRun a first pass now with: [bold]music-scout run[/bold]")
+    console.print("\nRun a first pass now with: [bold]scout run[/bold]")
 
 
 def _step_spotify_auth(cfg: Config) -> None:
@@ -99,7 +99,7 @@ def _explain_403(e: spotipy.SpotifyException) -> None:
         "    • Your Spotify account is in [bold]User Management[/bold].\n"
         "    • The app owner has an active [bold]Premium[/bold] subscription\n"
         "      (required since Feb 2026).\n"
-        "  Then: [bold]music-scout auth reset && music-scout init[/bold]"
+        "  Then: [bold]scout auth reset && scout init[/bold]"
     )
 
 
@@ -234,6 +234,6 @@ def _step_schedule() -> None:
         from . import scheduler
         scheduler.install()
         console.print("  [green]installed[/green] — runs daily at 09:00 local time.")
-        console.print("  Disable any time with: [bold]music-scout schedule uninstall[/bold]")
+        console.print("  Disable any time with: [bold]scout schedule uninstall[/bold]")
     else:
-        console.print("  Skipped. Run manually with: [bold]music-scout run[/bold]")
+        console.print("  Skipped. Run manually with: [bold]scout run[/bold]")

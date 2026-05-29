@@ -28,7 +28,7 @@ dependencies = [
 ai = ["anthropic>=0.40"]
 
 [project.scripts]
-music-scout = "music_scout.cli:cli"
+scout = "music_scout.cli:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["music_scout"]
