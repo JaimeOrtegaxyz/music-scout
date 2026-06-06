@@ -8,6 +8,8 @@ So I made a thing that does it while I sleep.
 
 You don't run it. It runs.
 
+![scout status — today's adds, the not-yet-on-Spotify pile, and the daily launchd job](music-scout-screenshot.png)
+
 ## What it pulls from
 
 - **RSS feeds** — any music blog with a feed.
