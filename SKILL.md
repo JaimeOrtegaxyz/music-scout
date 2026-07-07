@@ -31,7 +31,43 @@ This project hit the Feb 2026 Web API breaking changes head-on. Things to rememb
 - **"This feed's parsing is junk"** → `music-scout sources fix <id>` (or `--all`). Re-derives the recipe. If you're in a Claude Code session, you can also just inspect a few entries yourself and hand-write the `parse: {field, regex}` block in `sources.yaml` — named groups `artist` and `title`, regex runs against the chosen field's plain text (HTML stripped for summary/content).
 - **"What did I get today?"** → `music-scout status`, then summarize. For detail: `SELECT artist, title, release_date FROM tracks WHERE status='added' AND date(added_at)=date('now')`.
 - **"Retry the missing ones"** → `music-scout retry`.
-- **"It's broken"** → check `data/logs/run-<latest>.log` first. Common failures: source HTML changed (RSS moved/redesigned), Spotify auth token expired (`music-scout auth reset` then re-auth), launchd disabled (`launchctl list | grep music-scout`), or a write 403 (check Premium / Web API / User Management).
+- **"It's broken"** or **"is the daily run healthy?"** → run `music-scout verify` first (see below), then act on its verdict. Only fall back to reading `data/logs/run-<latest>.log` by hand if verify's headline isn't specific enough.
+
+## Verifying a run (health check)
+
+The daily run used to fail silently — a write 403, or a Mac asleep at 09:00, and nobody noticed for days. `music-scout verify` turns the DB + today's log + launchctl into one verdict so a loop (or you) can tell at a glance:
+
+```bash
+music-scout verify              # human summary; exits 0=ok 1=warn 2=broken
+music-scout verify --json       # structured report for a loop / dashboard
+music-scout verify --notify     # + macOS notification when warn or broken
+```
+
+**The DB is ground truth** — `added_today`, `retry_backlog`, `errors_today` come from `state.sqlite`, not from parsing prose. Today's log and `launchctl` only explain *why* the numbers look wrong.
+
+**Verdict → what to do:**
+
+| Verdict | Trigger | Action |
+|---|---|---|
+| `broken` | `403` in today's log | Auth lapsed. Check Premium active + app Web API toggle on + you're in User Management, then `music-scout auth reset` and re-run. |
+| `broken` | ran today, `added_today==0` **and** `errors_today>0` | Systemic Spotify failure, not a quiet news day. Read today's run log. |
+| `broken` | launchd job not loaded | `music-scout schedule install`. |
+| `warn` | no run today, last activity > ~26h ago | Mac likely slept through 09:00 (launchd doesn't backfill). `music-scout run` now. |
+| `warn` | rate-limit cooldown in today's log | Progress saved per track; `music-scout retry` resumes. |
+| `warn` | retry backlog over ceiling (default 500) | Retries may be failing, not just accumulating. Investigate a few `not_on_spotify` rows. |
+| `warn` | launchd last exit code nonzero | The most recent scheduled run failed — read its log. |
+| `ok` | a run happened and looks clean | Nothing. Headline reports adds + backlog. |
+
+`added_today==0` on its own is **not** a failure — some days there's simply nothing new. It only reads as broken alongside errors or a 403.
+
+**Run it on a schedule (the "ping me when it breaks" loop):** a companion launchd job runs `verify --notify` at 09:15, right after the daily run, so failures surface as a macOS notification instead of a stale playlist. Install it (mirrors `schedule install`):
+
+```bash
+cp scripts/com.jaimeortega.music-scout-verify.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.jaimeortega.music-scout-verify.plist
+```
+
+To iterate on it live from a Claude Code session instead, `/loop 30m music-scout verify --json` and react to the verdict. Keep the check local (launchd/loop, not `/schedule` cloud) — the DB and logs it reads live on this Mac.
 
 ## Hard rules
 

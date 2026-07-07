@@ -10,7 +10,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from . import banner, scheduler, store, wizard
+from . import banner, scheduler, store, verify as verify_mod, wizard
 from .config import Config, load_sources, save_sources, Source
 from .paths import LOGS_DIR, ensure_dirs
 from .spotify_client import SpotifyClient
@@ -120,6 +120,62 @@ def status() -> None:
         for tr in added_today:
             t.add_row(tr.artist, tr.title, tr.release_date or "—")
         console.print(t)
+
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True,
+              help="Emit the health report as JSON (for loops / dashboards).")
+@click.option("--notify", is_flag=True,
+              help="Post a macOS notification when the verdict is warn or broken.")
+@click.option("--notify-always", is_flag=True,
+              help="Notify even when healthy (implies --notify).")
+@click.option("--backlog-ceiling", default=verify_mod.DEFAULT_BACKLOG_CEILING,
+              show_default=True, help="Warn if the retry backlog exceeds this.")
+@click.option("--no-launchd", is_flag=True,
+              help="Skip the launchctl check (e.g. when run outside your GUI session).")
+def verify(as_json: bool, notify: bool, notify_always: bool,
+           backlog_ceiling: int, no_launchd: bool) -> None:
+    """Health-check the daily run and exit 0=ok, 1=warn, 2=broken.
+
+    Reads the state DB (ground truth) plus today's run log and launchctl, then
+    reports whether the last run actually worked. Built to gate a loop or a
+    scheduled check: a 403 auth break, a missed schedule, or an all-errors run
+    stop being invisible.
+    """
+    report = verify_mod.build_report(
+        backlog_ceiling=backlog_ceiling, check_launchd=not no_launchd
+    )
+    if notify_always:
+        notify = True
+
+    if as_json:
+        import json
+        click.echo(json.dumps(report.as_dict(), indent=2))
+    else:
+        _print_health(report)
+
+    if notify and (notify_always or report.verdict != "ok"):
+        verify_mod.notify(report)
+
+    raise SystemExit({"ok": 0, "warn": 1, "broken": 2}[report.verdict])
+
+
+def _print_health(r) -> None:
+    color = {"ok": "green", "warn": "yellow", "broken": "red"}[r.verdict]
+    icon = {"ok": "✓", "warn": "⚠", "broken": "✗"}[r.verdict]
+    console.rule(f"[bold]music-scout health[/bold]")
+    console.print(f"[bold {color}]{icon} {r.verdict.upper()}[/bold {color}] — {r.headline}")
+    console.print(
+        f"  added today {r.added_today} · last 7d {r.added_last_7d} · "
+        f"awaiting Spotify {r.retry_backlog} · errors today {r.errors_today}"
+    )
+    if r.hours_since_activity is not None:
+        console.print(f"  last activity {r.hours_since_activity:.1f}h ago "
+                      f"· ran today: {'yes' if r.ran_today else 'no'}")
+    if r.issues:
+        console.print("[bold]What to do:[/bold]")
+        for issue in r.issues:
+            console.print(f"  • {issue}")
 
 
 # ---- auth subgroup ----

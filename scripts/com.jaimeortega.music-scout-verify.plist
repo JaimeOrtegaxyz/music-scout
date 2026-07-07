@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jaimeortega.music-scout-verify</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jaimeortega/Documents/GitHub/music-scout/.venv/bin/python3.11</string>
+        <string>-m</string>
+        <string>music_scout.cli</string>
+        <string>verify</string>
+        <string>--notify</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/jaimeortega/Documents/GitHub/music-scout</string>
+    <!-- 09:15 — fifteen minutes after the daily run finishes, so a broken run,
+         a 403 auth break, or a schedule the Mac slept through pings you instead
+         of dying silently in a log. Only notifies on warn/broken. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>15</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/verify.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/verify.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
