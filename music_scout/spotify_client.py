@@ -83,6 +83,10 @@ class SpotifyClient:
 
     def search_track(self, artist: str, title: str, market: str = "US") -> SpotifyTrack | None:
         q = f'track:"{title}" artist:"{artist}"'
+        # Spotify rejects queries over 250 chars with a 400. A query that long
+        # is garbage from a misparse and would never match — treat as not found.
+        if len(q) > 250:
+            return None
         try:
             # Spotify caps search at 10 results/request as of Feb 2026; we only
             # need the top hit anyway.

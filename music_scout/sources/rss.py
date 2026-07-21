@@ -42,6 +42,11 @@ LEAD_NOISE_RE = re.compile(
 # Quote characters to peel off artist/title, including smart quotes.
 _QUOTES = "\"'“”‘’«»「」『』"
 
+# Real artist/title strings are short. Anything longer means the extraction
+# regex swallowed prose (e.g. a gig-review post with an incidental " - "),
+# which would poison the DB and blow Spotify's 250-char search query cap.
+MAX_FIELD_LEN = 120
+
 USER_AGENT = "music-scout/0.1 (+https://github.com/JaimeOrtegaxyz/music-scout)"
 
 
@@ -187,7 +192,7 @@ def _from_recipe(entry, recipe: dict, post_url: str) -> Candidate | None:
         return None
     artist = (m.groupdict().get("artist") or "").strip().strip(_QUOTES).strip()
     title = (m.groupdict().get("title") or "").strip().strip(_QUOTES).strip()
-    if artist and title:
+    if artist and title and len(artist) <= MAX_FIELD_LEN and len(title) <= MAX_FIELD_LEN:
         return Candidate(artist=artist, title=title, source_url=post_url)
     return None
 
@@ -268,7 +273,7 @@ def _from_title(entry, post_url: str) -> Iterator[Candidate]:
             track = track.strip().strip(_QUOTES).strip()
             # Drop the trailing "を公開"/"を配信" verb some JP blogs append.
             track = re.sub(r"を(公開|配信|リリース).*$", "", track).strip(_QUOTES).strip()
-            if artist and track:
+            if artist and track and len(artist) <= MAX_FIELD_LEN and len(track) <= MAX_FIELD_LEN:
                 yield Candidate(
                     artist=artist, title=track, source_url=post_url
                 )
