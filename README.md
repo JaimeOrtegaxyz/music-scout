@@ -1,22 +1,18 @@
 # music-scout
 
-I follow a bunch of music blogs. The ritual never changes: read post, find song, alt-tab to Spotify, search, add, repeat. Half the time the track isn't on Spotify yet. The other half I've already added it and don't remember. A week later a different blog mentions the same song and we do it all again.
+I love music blogs. Copying their recommendations into a playlist so I can actually listen to them all together is a pain in the ass, so I built **music-scout** to do it for me.
 
-So I made a thing that does it while I sleep.
-
-**music-scout** checks your blogs once a day, grabs anything released this year, and drops it into one Spotify playlist — newest on top. It remembers every track it's ever seen, including the ones it couldn't find, so nothing gets lost and nothing gets added twice.
-
-You don't run it. It runs.
+Once a day it reads the blogs, finds each song on Spotify, and adds this year's releases to one playlist, newest first. It logs every track it has seen, so nothing gets added twice and songs Spotify doesn't have yet get another look tomorrow.
 
 ![scout status — today's adds, the not-yet-on-Spotify pile, and the daily launchd job](music-scout-screenshot.png)
 
 ## What it pulls from
 
 - **RSS feeds** — any music blog with a feed.
-- **Hype Machine** — its popular page (their RSS is dead, so we scrape the page; you're welcome).
+- **Hype Machine** — its popular page (their RSS is dead, so we scrape the page).
 - **Spotify playlists** — point it at an editorial playlist and it'll mine that too.
 
-Current-year only. Older stuff gets logged and ignored. Tracks that aren't on Spotify yet get retried every day until they show up.
+It keeps only tracks released this year; older ones are logged and skipped. Tracks Spotify doesn't have yet get another search every day until they show up.
 
 ## Setup
 
@@ -27,21 +23,21 @@ cd ~/Documents/GitHub/music-scout
 scout init
 ```
 
-`install.sh` only needs `python3` >= 3.11. It creates a `.venv/` in the repo, editable-installs the package into it, and symlinks `scout` into `~/.local/bin` so it works from any directory. Re-run it whenever (e.g. after `git pull`) — it's idempotent. Add `--ai` to also pull in the optional LLM-recipe extra. If `~/.local/bin` isn't on your `PATH`, the script prints the one line to add to your `~/.zshrc`.
+`install.sh` needs only `python3` >= 3.11. It creates `.venv/` in the repo, editable-installs the package, and symlinks `scout` into `~/.local/bin`. Safe to re-run after every `git pull`. `--ai` adds the optional LLM-recipe extra. If `~/.local/bin` isn't on your `PATH`, the script prints the line to add to `~/.zshrc`.
 
-> The install is **editable** on purpose: the app keeps its data — config, the SQLite track DB, logs — in `./data` inside the checkout, so it has to run from there. Your blogs and listening history therefore live alongside the repo but stay **out of git** (only the `*.example.yaml` templates are committed). Clone it anywhere, or hand it to someone else, and they start clean with their own `scout init`.
+> The install is **editable** on purpose: the app keeps config, the SQLite track DB and logs in `./data` inside the checkout, so it has to run from there. Your blogs and listening history sit next to the code but stay **out of git**; only the `*.example.yaml` templates are committed. Anyone who clones it starts clean with their own `scout init`.
 
 To remove it: `scout schedule uninstall` (stop the daily job), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
 
-`init` walks you through it: Spotify auth, linking an existing playlist (paste its URL) or creating one, adding your sources, and installing the daily job. Every step after auth is skippable, so a second checkout — or a script that only wants the Spotify login — doesn't spawn a duplicate playlist. Answers land in `data/config.yaml` and `data/sources.yaml` — edit them by hand whenever.
+`init` walks you through Spotify auth, linking an existing playlist (paste its URL) or creating one, adding sources, and installing the daily job. Every step after auth is skippable, so a second checkout doesn't spawn a duplicate playlist. Answers land in `data/config.yaml` and `data/sources.yaml`; edit them by hand whenever.
 
-One catch, not mine: since Feb 2026 Spotify makes you own a **Developer App** with **Premium** to write playlists. `init` tells you exactly what to click.
+Spotify changed the rules in Feb 2026: writing to a playlist now needs your own **Developer App** and a **Premium** account. `init` tells you exactly what to click.
 
 ## Messy feeds
 
-Every blog titles its posts differently — `Artist - Song`, `Stream: Artist – Song`, `Artist『Song』を公開`, or the truly cursed ones where the title is "EP REVIEW" and the actual song is buried in the post body. No single parser survives contact with all of them.
+Every blog titles its posts differently: `Artist - Song`, `Stream: Artist – Song`, `Artist『Song』を公開`, or the truly cursed ones where the title is "EP REVIEW" and the actual song is buried in the post body. One regex can't cover all of them.
 
-So music-scout can ask an LLM — once, when you *add* a feed — to write a tiny regex recipe for it, saved into `sources.yaml`. The daily run just replays that regex. **No AI on the cron path, no per-run cost.**
+So when you *add* a feed, music-scout can ask an LLM once to write a small regex recipe for it and save it into `sources.yaml`. The daily run replays that regex; it never calls a model, so a run costs nothing.
 
 ```bash
 scout sources add https://someblog.com/feed   # auto-writes a recipe if it can
@@ -49,11 +45,11 @@ scout sources fix someblog                     # redo one
 scout sources fix --all                         # retrofit them all
 ```
 
-It uses your `ANTHROPIC_API_KEY` if set (`pip install -e '.[ai]'`), else the `claude` CLI if you have it, else a generic parser. No key, no problem — you just fix the weird ones by hand. And if a feed turns out to be reviews with no actual songs, it'll tell you instead of making something up.
+It uses your `ANTHROPIC_API_KEY` if set (`pip install -e '.[ai]'`), else the `claude` CLI if you have it, else a generic parser. Without either, you fix the weird ones by hand. If a feed turns out to be reviews with no song titles in it, it says so and skips the recipe.
 
 ## Listening
 
-[cliamp](https://github.com/bjarneo/cliamp) is a lovely terminal player and it speaks Spotify, so just run it and pick the **Music Scout** playlist from its browser. There's no `scout listen` command because cliamp is interactive and can't be fed tracks from the outside — but it happily shares the same Spotify app, so it Just Works once you've done `init`.
+[cliamp](https://github.com/bjarneo/cliamp) is a terminal player that speaks Spotify. Run it and pick the **Music Scout** playlist from its browser. There's no `scout listen` because cliamp is interactive and can't be handed tracks from outside, but it shares the same Spotify app, so it works as soon as `init` is done.
 
 ## Commands
 
@@ -61,6 +57,7 @@ It uses your `ANTHROPIC_API_KEY` if set (`pip install -e '.[ai]'`), else the `cl
 scout run                       # one full pass (what the daily job runs)
 scout backfill --source <id>    # page back through a feed's archive for this year's misses
 scout status                    # today's adds + how many are still missing
+scout verify                    # was the last daily run healthy? exit 0/1/2
 scout retry                     # re-check the not-on-Spotify pile
 scout sources list              # see your feeds
 scout sources fix --all         # refresh parse recipes
@@ -74,9 +71,9 @@ sources → resolve on Spotify → keep this year's → add to the playlist
    └────────────────── every step logged to data/state.sqlite ──────────────────┘
 ```
 
-That SQLite file is the whole trick: it's the line between "found a song" and "put it in Spotify." Search fails today? The track waits and gets retried tomorrow. Already added? Skipped. It's a memory, not a firehose.
+That SQLite file is the whole trick. It sits between "found a song" and "put it in Spotify." A failed search waits and gets retried tomorrow; an already-added track is skipped.
 
-Runs daily at 09:00 via launchd. No daemon, no server, no account but yours.
+launchd runs it daily at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change `Hour`/`Minute` in `music_scout/scheduler.py` and re-run `scout schedule install`.
 
 ## License
 
