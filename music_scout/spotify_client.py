@@ -142,6 +142,13 @@ class SpotifyClient:
         self._sleep()
         return resp["id"]
 
+    def playlist_info(self, playlist_id: str) -> dict:
+        """{id, name} for an existing playlist. Raises SpotifyException if the
+        ID is bogus or not visible to this user (used by `init` to link one)."""
+        info = self._sp._get(f"playlists/{playlist_id}", fields="id,name")
+        self._sleep()
+        return {"id": info["id"], "name": info["name"]}
+
     def playlist_track_uris(self, playlist_id: str) -> set[str]:
         """All current URIs in the playlist (so we don't add duplicates)."""
         uris: set[str] = set()

@@ -1,11 +1,17 @@
 """First-run interactive setup.
 
-Walks the user through Spotify auth, creating the single playlist, choosing
-sources, and installing the launchd job. Re-runnable safely; existing config
-values are shown as defaults and accepted with Enter.
+Walks the user through Spotify auth, linking or creating the single playlist,
+choosing sources, and installing the launchd job. Re-runnable safely; existing
+config values are shown as defaults and accepted with Enter.
+
+Steps 2-4 are individually optional so a second checkout (or a tool that only
+needs the Spotify login) doesn't have to spawn a duplicate playlist or a second
+daily job: link an existing playlist by URL, or skip it entirely.
 """
 
 from __future__ import annotations
+
+import re
 
 import spotipy
 from rich.console import Console
@@ -62,6 +68,20 @@ def _step_spotify_auth(cfg: Config) -> None:
     )
 
 
+_PLAYLIST_ID_RE = re.compile(r"^[A-Za-z0-9]{22}$")
+
+
+def _parse_playlist_id(entry: str) -> str | None:
+    """Accept a share URL, a spotify:playlist: URI, or a bare 22-char ID."""
+    e = entry.strip()
+    m = re.search(r"open\.spotify\.com/(?:[a-z\-]+/)?playlist/([A-Za-z0-9]{22})", e)
+    if m:
+        return m.group(1)
+    if e.startswith("spotify:playlist:"):
+        e = e.split(":")[-1]
+    return e if _PLAYLIST_ID_RE.match(e) else None
+
+
 def _step_playlist(cfg: Config, client: SpotifyClient) -> None:
     console.print("\n[bold]2/4 Playlist[/bold]")
     console.print(
@@ -72,9 +92,42 @@ def _step_playlist(cfg: Config, client: SpotifyClient) -> None:
         console.print(
             f"  Already linked: [cyan]{cfg.playlist_name}[/cyan] ({cfg.playlist_id})"
         )
-        if not Confirm.ask("  Create a new one?", default=False):
+        if Confirm.ask("  Keep it?", default=True):
             return
 
+    console.print(
+        "  Paste an existing playlist URL/ID to link it (e.g. one another\n"
+        "  music-scout install already fills), press Enter to create a new one,\n"
+        "  or type [bold]skip[/bold] if this checkout only needs the Spotify login.\n"
+    )
+    while True:
+        entry = Prompt.ask("  Playlist URL/ID", default="").strip()
+        if not entry:
+            _create_playlist(cfg, client)
+            return
+        if entry.lower() == "skip":
+            cfg.playlist_id = ""
+            console.print(
+                "  [yellow]skipped[/yellow] — no playlist linked. `scout run` will "
+                "refuse until you link one (rerun [bold]scout init[/bold])."
+            )
+            return
+        pid = _parse_playlist_id(entry)
+        if pid is None:
+            console.print("    [red]That doesn't look like a Spotify playlist URL or ID.[/red]")
+            continue
+        try:
+            info = client.playlist_info(pid)
+        except spotipy.SpotifyException as e:
+            console.print(f"    [red]Spotify couldn't find that playlist:[/red] {e.msg or e}")
+            continue
+        cfg.playlist_id = info["id"]
+        cfg.playlist_name = info["name"]
+        console.print(f"  [green]linked[/green] {cfg.playlist_name} ({cfg.playlist_id})")
+        return
+
+
+def _create_playlist(cfg: Config, client: SpotifyClient) -> None:
     cfg.playlist_name = Prompt.ask("  Playlist name", default=cfg.playlist_name)
     try:
         pid = client.create_playlist(

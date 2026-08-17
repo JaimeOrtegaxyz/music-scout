@@ -33,7 +33,7 @@ scout init
 
 To remove it: `scout schedule uninstall` (stop the daily job), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
 
-`init` walks you through it: Spotify auth, naming the playlist, adding your sources, and installing the daily job. Answers land in `data/config.yaml` and `data/sources.yaml` — edit them by hand whenever.
+`init` walks you through it: Spotify auth, linking an existing playlist (paste its URL) or creating one, adding your sources, and installing the daily job. Every step after auth is skippable, so a second checkout — or a script that only wants the Spotify login — doesn't spawn a duplicate playlist. Answers land in `data/config.yaml` and `data/sources.yaml` — edit them by hand whenever.
 
 One catch, not mine: since Feb 2026 Spotify makes you own a **Developer App** with **Premium** to write playlists. `init` tells you exactly what to click.
 
