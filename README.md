@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="music-scout-logo.svg" alt="music-scout" width="220">
+</p>
+
 # music-scout
 
 I love music blogs. Copying their recommendations into a playlist so I can actually listen to them all together is a pain in the ass, so I built **music-scout** to do it for me.
@@ -78,3 +82,7 @@ launchd runs it daily at 09:00. Nothing stays resident between runs, and the onl
 ## License
 
 MIT. It's a playlist filler, take it.
+
+<p align="center">
+  <img src="music-scout-logo.svg" alt="" width="70">
+</p>
