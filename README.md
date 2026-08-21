@@ -84,5 +84,8 @@ launchd runs it daily at 09:00. Nothing stays resident between runs, and the onl
 MIT. It's a playlist filler, take it.
 
 <p align="center">
-  <img src="music-scout-logo.svg" alt="" width="70">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="psych-music-icon-white.svg">
+    <img src="psych-music-icon-black.svg" alt="" width="140">
+  </picture>
 </p>
