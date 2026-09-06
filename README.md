@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="music-scout-logo.svg" alt="music-scout" width="220">
+  <img src="music-scout-logo.svg" alt="music scout" width="220">
 </p>
 
-# music-scout
+# music scout
 
-I love music blogs. Copying their recommendations into a playlist so I can actually listen to them all together is a pain in the ass, so I built **music-scout** to do it for me.
+I love music blogs. Copying their recommendations into a playlist so I can actually listen to them all together is a pain in the ass, so I built **music scout** to do it for me.
 
 Once a day it reads the blogs, finds each song on Spotify, and adds this year's releases to one playlist, newest first. It logs every track it has seen, so nothing gets added twice and songs Spotify doesn't have yet get another look tomorrow.
 
@@ -41,7 +41,7 @@ Spotify changed the rules in Feb 2026: writing to a playlist now needs your own 
 
 Every blog titles its posts differently: `Artist - Song`, `Stream: Artist – Song`, `Artist『Song』を公開`, or the truly cursed ones where the title is "EP REVIEW" and the actual song is buried in the post body. One regex can't cover all of them.
 
-So when you *add* a feed, music-scout can ask an LLM once to write a small regex recipe for it and save it into `sources.yaml`. The daily run replays that regex; it never calls a model, so a run costs nothing.
+So when you *add* a feed, music scout can ask an LLM once to write a small regex recipe for it and save it into `sources.yaml`. The daily run replays that regex; it never calls a model, so a run costs nothing.
 
 ```bash
 scout sources add https://someblog.com/feed   # auto-writes a recipe if it can
