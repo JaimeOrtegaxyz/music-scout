@@ -18,8 +18,13 @@ LAUNCHD_PLIST_NAME = "com.jaimeortega.music-scout.plist"
 LAUNCHD_PLIST_TEMPLATE = REPO_ROOT / "scripts" / LAUNCHD_PLIST_NAME
 LAUNCHD_PLIST_INSTALLED = Path.home() / "Library" / "LaunchAgents" / LAUNCHD_PLIST_NAME
 
+# launchd's stdio files must live outside ~/Documents: TCC's com.apple.macl
+# xattr on files there goes stale and launchd's spawn-time open fails with
+# EX_CONFIG (78) before the process even starts.
+LAUNCHD_LOGS_DIR = Path.home() / "Library" / "Logs" / "music-scout"
+
 
 def ensure_dirs() -> None:
     """Create data/, data/logs/, data/cache/ if missing."""
-    for p in (DATA_DIR, LOGS_DIR, CACHE_DIR):
+    for p in (DATA_DIR, LOGS_DIR, CACHE_DIR, LAUNCHD_LOGS_DIR):
         p.mkdir(parents=True, exist_ok=True)

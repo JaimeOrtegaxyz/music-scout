@@ -27,9 +27,9 @@
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/verify.out.log</string>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/verify.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/verify.err.log</string>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/verify.err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>

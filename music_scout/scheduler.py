@@ -7,10 +7,10 @@ import subprocess
 import sys
 
 from .paths import (
+    LAUNCHD_LOGS_DIR,
     LAUNCHD_PLIST_INSTALLED,
     LAUNCHD_PLIST_NAME,
     LAUNCHD_PLIST_TEMPLATE,
-    LOGS_DIR,
     REPO_ROOT,
     ensure_dirs,
 )
@@ -60,8 +60,8 @@ def _render() -> str:
         label=label,
         python=sys.executable,
         cwd=str(REPO_ROOT),
-        stdout=str(LOGS_DIR / "launchd.out.log"),
-        stderr=str(LOGS_DIR / "launchd.err.log"),
+        stdout=str(LAUNCHD_LOGS_DIR / "launchd.out.log"),
+        stderr=str(LAUNCHD_LOGS_DIR / "launchd.err.log"),
     )
 
 

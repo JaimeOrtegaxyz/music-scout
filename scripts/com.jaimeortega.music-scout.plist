@@ -23,9 +23,9 @@
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/launchd.out.log</string>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/jaimeortega/Documents/GitHub/music-scout/data/logs/launchd.err.log</string>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/launchd.err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
