@@ -76,6 +76,20 @@ def _recipe_of(source: Source) -> dict | None:
 def _candidates_from_entry(entry, recipe: dict | None, source_url: str) -> Iterator[Candidate]:
     """The three extraction strategies, tried in order, for one feed entry.
     Shared by the daily `fetch` and the paginating `fetch_history`."""
+    for cand in _extract(entry, recipe, source_url):
+        cand.raw = _raw_text(entry)
+        yield cand
+
+
+def _raw_text(entry) -> str:
+    """Headline + the start of the post, kept so `review` can re-read what a
+    miss was parsed from without refetching the blog."""
+    title = _field_text(entry, "title")
+    summary = _field_text(entry, "summary")[:400]
+    return f"{title}\n{summary}".strip()
+
+
+def _extract(entry, recipe: dict | None, source_url: str) -> Iterator[Candidate]:
     post_url = entry.get("link", source_url)
     body = _entry_body(entry)
     # Strategy 1: every Spotify embed/link in the post body.

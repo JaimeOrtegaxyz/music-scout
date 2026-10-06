@@ -12,8 +12,12 @@ You are working in the user's music-scout repo (`~/Documents/GitHub/music-scout/
 Three-stage pipeline, each persisted to `data/state.sqlite`:
 
 1. **fetch** — pull candidates from each source (`sources.yaml`). Sources are RSS feeds, Hype Machine, or Spotify playlists. RSS parsing tries, in order: Spotify embeds in the post body → a stored LLM-derived `parse` recipe (regex on a chosen field) → generic "Artist - Title" splitting. Output: `{artist, title, source_id, source_url}`.
-2. **resolve** — search Spotify for each candidate, get `spotify_uri` + `release_date`. If no Spotify hit → status `not_on_spotify` (retried daily).
+2. **resolve** — search Spotify for each candidate, get `spotify_uri` + `release_date`. The search (`clean.py` + `SpotifyClient.search_track`) tries the exact field query on the raw strings, then on cleaned strings (featured artists, stray quotes, nichemusic's `'のMV` suffix stripped), then a loose query whose hits must fuzzy-match artist *and* title. The DB keeps the scraped strings as the dedupe key; review corrections live in `search_artist`/`search_title`. Review/announcement posts → `not_a_song` (terminal). No hit → `not_on_spotify`, retried on a widening schedule (daily while fresh, then every 3/7/14 days — `store.RETRY_SCHEDULE`).
 3. **filter + add** — drop tracks where `release_date.year != current_year` (→ `not_current_year`, terminal). Everything else is added to the single playlist (`config.yaml` `playlist_id`) at position 0, deduped against what's already there.
+
+**The shelf.** A miss still unfound after 60 days moves to `shelved` — not deleted, still listed (`music-scout shelf`), re-searched once a month, restorable with `music-scout shelf restore <key>|--all`. It's "probably a real song, we just never found it", not a verdict.
+
+**The weekly review** (`music-scout review`, `review.py`). Misses stuck 7+ days get one look from Claude, which reads the saved post text (`raw_text`) and answers fix / not_a_song / looks_right. Fixes are searched immediately and only real Spotify hits get added. Recurring per-source failures come back as parser notes in `data/logs/review-<date>.md` — act on them with `sources fix <id>` or a hand-written recipe, so the fix lands in the deterministic layer. LLM backend: `claude -p` (tool-less, hooks silenced) or `ANTHROPIC_API_KEY`. Scheduled by `scripts/com.jaimeortega.music-scout-review.plist` (daily 10:30 + login, `--catch-up` makes it weekly).
 
 State table is the source of truth. Re-running `music-scout run` is idempotent — already-`added` tracks are skipped, `not_on_spotify` ones get re-resolved.
 
@@ -30,7 +34,9 @@ This project hit the Feb 2026 Web API breaking changes head-on. Things to rememb
 - **"Add this blog"** → `music-scout sources add <url>`. If the URL isn't an RSS feed, the wizard tries to discover one (look for `<link rel="alternate" type="application/rss+xml">` in the HTML head; common paths: `/feed`, `/rss`, `/index.xml`). Confirm before saving. Adding an RSS source auto-derives an LLM parse recipe if a backend is available.
 - **"This feed's parsing is junk"** → `music-scout sources fix <id>` (or `--all`). Re-derives the recipe. If you're in a Claude Code session, you can also just inspect a few entries yourself and hand-write the `parse: {field, regex}` block in `sources.yaml` — named groups `artist` and `title`, regex runs against the chosen field's plain text (HTML stripped for summary/content).
 - **"What did I get today?"** → `music-scout status`, then summarize. For detail: `SELECT artist, title, release_date FROM tracks WHERE status='added' AND date(added_at)=date('now')`.
-- **"Retry the missing ones"** → `music-scout retry`.
+- **"Retry the missing ones"** → `music-scout retry` (only searches misses that are due; `shelf restore` first to include shelved ones).
+- **"Review the backlog"** → `music-scout review` (`--dry-run` to preview verdicts, `--limit N`). Then read the report's "Parser patterns to fix" section and offer to fix those sources.
+- **"What never showed up?"** → `music-scout shelf`.
 - **"It's broken"** or **"is the daily run healthy?"** → run `music-scout verify` first (see below), then act on its verdict. Only fall back to reading `data/logs/run-<latest>.log` by hand if verify's headline isn't specific enough.
 
 ## Verifying a run (health check)
@@ -87,7 +93,10 @@ sqlite3 data/state.sqlite "SELECT artist, title, added_at FROM tracks WHERE stat
 sqlite3 data/state.sqlite "SELECT source_id, COUNT(*) FROM tracks WHERE status='added' AND added_at > datetime('now','start of month') GROUP BY source_id ORDER BY 2 DESC"
 
 # Tracks waiting to appear on Spotify
-sqlite3 data/state.sqlite "SELECT artist, title, first_seen_at, attempts FROM tracks WHERE status='not_on_spotify' ORDER BY first_seen_at"
+sqlite3 data/state.sqlite "SELECT artist, title, first_seen_at, next_retry_at FROM tracks WHERE status='not_on_spotify' ORDER BY first_seen_at"
+
+# What the last review decided
+sqlite3 data/state.sqlite "SELECT review_note, artist, title, search_artist, search_title FROM tracks WHERE reviewed_at > datetime('now','-1 day')"
 
 # Tail today's run log
 tail -f data/logs/run-$(date +%Y-%m-%d).log
@@ -97,7 +106,7 @@ tail -f data/logs/run-$(date +%Y-%m-%d).log
 
 - Auth: Spotify Developer App OAuth (client_id/secret + refresh_token in `data/config.yaml`).
 - One playlist: `config.yaml` `playlist_id` / `playlist_name`, created by the wizard.
-- Scheduler: launchd plist at `scripts/com.jaimeortega.music-scout.plist`, installed to `~/Library/LaunchAgents/`, runs daily at 09:00.
+- Scheduler: launchd plist at `scripts/com.jaimeortega.music-scout.plist`, installed to `~/Library/LaunchAgents/`, runs daily at 09:00 and at login with `run --catch-up` (no-op before 09:00 or if today's run log exists) — launchd makes up a slot missed asleep, not one missed powered off.
 - Listening: [cliamp](https://github.com/bjarneo/cliamp) is an interactive TUI — it can't take Spotify URIs as args, so there's no `listen` command. The user runs `cliamp` separately and picks the "Music Scout" playlist from its Spotify browser. cliamp shares the same Spotify dev app (redirect `127.0.0.1:19872/login`).
 - Region: hardcoded to `US`.
 - Repo: `~/Documents/GitHub/music-scout/`. README at the root has the user-facing version.

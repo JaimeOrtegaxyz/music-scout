@@ -21,8 +21,12 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 
 MODEL = "claude-haiku-4-5"  # cheap + plenty for this extraction task
+# Backlog review reads messy multilingual headlines and judges what the real
+# song is — worth a stronger model; it runs weekly on a few dozen tracks.
+REVIEW_MODEL = "claude-sonnet-5-5"
 
 _SYSTEM = (
     "You write parsing recipes for music-blog RSS feeds. Given sample feed "
@@ -80,8 +84,7 @@ def derive_recipe(samples: list[dict]) -> dict | None:
     backend = available()
     if backend is None:
         return None
-    prompt = _build_prompt(samples)
-    raw = _call_api(prompt) if backend == "api" else _call_cli(prompt)
+    raw = complete(_SYSTEM, _build_prompt(samples), max_tokens=400)
     if not raw:
         return None
     recipe = _extract_json(raw)
@@ -106,14 +109,26 @@ def _build_prompt(samples: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _call_api(prompt: str) -> str | None:
+def complete(system: str, prompt: str, *, max_tokens: int = 400,
+             model: str = MODEL) -> str | None:
+    """One system+user turn on whichever backend is available. None when
+    there's no backend or the call failed."""
+    backend = available()
+    if backend == "api":
+        return _call_api(system, prompt, max_tokens, model)
+    if backend == "cli":
+        return _call_cli(system, prompt, model)
+    return None
+
+
+def _call_api(system: str, prompt: str, max_tokens: int, model: str) -> str | None:
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=_api_key())
         msg = client.messages.create(
-            model=MODEL,
-            max_tokens=400,
-            system=_SYSTEM,
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
             messages=[{"role": "user", "content": prompt}],
         )
         return "".join(b.text for b in msg.content if b.type == "text")
@@ -121,11 +136,18 @@ def _call_api(prompt: str) -> str | None:
         return None
 
 
-def _call_cli(prompt: str) -> str | None:
+def _call_cli(system: str, prompt: str, model: str) -> str | None:
+    # `claude -p` is a full session: run it tool-less, from a neutral cwd (no
+    # project CLAUDE.md), unsaved, and with the sound hooks silenced — this
+    # gets called from launchd and in batches.
+    alias = "sonnet" if "sonnet" in model else "haiku" if "haiku" in model else model
+    env = {**os.environ, "CLAUDE_HOOKS_SILENT": "1"}
     try:
         proc = subprocess.run(
-            ["claude", "-p", f"{_SYSTEM}\n\n{prompt}"],
-            capture_output=True, text=True, timeout=120,
+            ["claude", "-p", "--model", alias, "--tools", "",
+             "--no-session-persistence", "--system-prompt", system],
+            input=prompt, capture_output=True, text=True, timeout=600,
+            cwd=tempfile.gettempdir(), env=env,
         )
         return proc.stdout.strip() or None
     except Exception:

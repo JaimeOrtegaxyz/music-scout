@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jaimeortega.music-scout-review</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jaimeortega/Documents/GitHub/music-scout/.venv/bin/python3.11</string>
+        <string>-m</string>
+        <string>music_scout.cli</string>
+        <string>review</string>
+        <string>--catch-up</string>
+        <string>--notify</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/jaimeortega/Documents/GitHub/music-scout</string>
+    <!-- Weekly Claude backlog review. Fires daily at 10:30 and at login, but
+         `--catch-up` only proceeds when a week has passed since the last
+         review (or the pool is big) — so a Mac that's off on review day
+         still gets one the next time it's up. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/review.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jaimeortega/Library/Logs/music-scout/review.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- ~/.local/bin: the `claude` CLI review uses as its LLM backend. -->
+        <key>PATH</key>
+        <string>/Users/jaimeortega/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <key>CLAUDE_HOOKS_SILENT</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

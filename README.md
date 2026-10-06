@@ -63,6 +63,8 @@ scout backfill --source <id>    # page back through a feed's archive for this ye
 scout status                    # today's adds + how many are still missing
 scout verify                    # was the last daily run healthy? exit 0/1/2
 scout retry                     # re-check the not-on-Spotify pile
+scout review                    # have Claude look over week-old misses
+scout shelf                     # what never turned up in 60 days
 scout sources list              # see your feeds
 scout sources fix --all         # refresh parse recipes
 scout schedule uninstall        # stop the daily job
@@ -75,9 +77,11 @@ sources → resolve on Spotify → keep this year's → add to the playlist
    └────────────────── every step logged to data/state.sqlite ──────────────────┘
 ```
 
-That SQLite file is the whole trick. It sits between "found a song" and "put it in Spotify." A failed search waits and gets retried tomorrow; an already-added track is skipped.
+That SQLite file is the whole trick. It sits between "found a song" and "put it in Spotify." A failed search waits and gets retried, daily at first and then less often; an already-added track is skipped. Anything still missing after 60 days goes on a shelf: kept, checked once a month, never deleted.
 
-launchd runs it daily at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change `Hour`/`Minute` in `music_scout/scheduler.py` and re-run `scout schedule install`.
+Blogs don't all write headlines the same way, so some misses are songs we parsed wrong rather than songs Spotify doesn't have. Once a week `scout review` hands misses that have been stuck a week to Claude, along with the post they came from. Claude corrects the bad parses, drops posts that weren't about a song, and points out feeds whose parser needs fixing. Corrections only get added if Spotify actually has them. The daily run never calls an LLM.
+
+launchd runs it daily at 09:00, and at login if the Mac was off at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change `Hour`/`Minute` in `music_scout/scheduler.py` and re-run `scout schedule install`.
 
 ## License
 

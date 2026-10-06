@@ -126,10 +126,14 @@ def status() -> None:
     """Today's adds, retry queue, schedule state."""
     with store.connect() as conn:
         added_today = store.fetch_added_today(conn)
-        retryable = store.fetch_retryable(conn)
+        backlog = store.count_backlog(conn)
+        due = sum(t.status != store.STATUS_SHELVED for t in store.fetch_retryable(conn))
+        shelved = len(store.fetch_shelf(conn))
     console.rule("[bold]music-scout status[/bold]")
     console.print(f"Added today:        [green]{len(added_today)}[/green]")
-    console.print(f"Awaiting Spotify:   [yellow]{len(retryable)}[/yellow]")
+    console.print(f"Awaiting Spotify:   [yellow]{backlog}[/yellow] ({due} due for a search)")
+    console.print(f"Shelf:              {shelved} (never found in {store.SHELVE_AFTER_DAYS} days "
+                  f"— `music-scout shelf`)")
     console.print(f"launchd:            {scheduler.status()}")
     if added_today:
         t = Table(title="Today's adds", show_lines=False)
@@ -193,6 +197,90 @@ def _print_health(r) -> None:
         console.print("[bold]What to do:[/bold]")
         for issue in r.issues:
             console.print(f"  • {issue}")
+
+
+@cli.command()
+@click.option("--limit", default=100, show_default=True,
+              help="Most tracks to review this pass.")
+@click.option("--dry-run", is_flag=True, help="Ask Claude, print verdicts, change nothing.")
+@click.option("--catch-up", is_flag=True,
+              help="Skip unless a review is due (weekly, or sooner if the pool is big). "
+                   "launchd passes this.")
+@click.option("--notify", is_flag=True, help="macOS notification if anything changed.")
+def review(limit: int, dry_run: bool, catch_up: bool, notify: bool) -> None:
+    """Have Claude look over misses stuck a week+ — fix bad parses, drop
+    non-songs, flag sources whose parser needs work. Writes
+    data/logs/review-<date>.md."""
+    from . import review as review_mod
+    if catch_up:
+        with store.connect() as conn:
+            if not review_mod.due(conn):
+                return
+    _setup_logging()
+    cfg = Config.load()
+    try:
+        res = review_mod.run(cfg, SpotifyClient(cfg), limit=limit, dry_run=dry_run)
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)
+    console.rule("[bold]review complete[/bold]")
+    console.print(f"  reviewed               {res.reviewed}")
+    console.print(f"  corrected + found      {res.fixed_found}")
+    console.print(f"  corrected, still gone  {res.fixed_missing}")
+    if res.fixed_queued:
+        console.print(f"  corrected, queued      {res.fixed_queued}  (Spotify cooldown)")
+    console.print(f"  not a song             {res.not_a_song}")
+    console.print(f"  parse looked right     {res.looks_right}")
+    if res.unanswered:
+        console.print(f"  unanswered             {res.unanswered}  (next review)")
+    if dry_run:
+        for line in res.verdicts:
+            console.print(f"  {line}", markup=False)
+    for a in res.added:
+        console.print(f"  [green]+[/green] {a}")
+    for n in res.source_notes:
+        console.print(f"  [yellow]parser[/yellow] {n.get('source_id')}: {n.get('pattern')}")
+    if res.report_path:
+        console.print(f"  report: {res.report_path}")
+    if notify and not dry_run:
+        review_mod.notify(res)
+
+
+# ---- shelf subgroup ----
+
+@cli.group(invoke_without_command=True)
+@click.pass_context
+def shelf(ctx: click.Context) -> None:
+    """Tracks never found on Spotify within 60 days. Kept, re-checked monthly."""
+    if ctx.invoked_subcommand:
+        return
+    with store.connect() as conn:
+        tracks = store.fetch_shelf(conn)
+    if not tracks:
+        console.print("(shelf is empty)")
+        return
+    t = Table(title=f"Shelf — {len(tracks)} tracks", show_lines=False)
+    t.add_column("Key"); t.add_column("Source"); t.add_column("Artist"); t.add_column("Title")
+    t.add_column("First seen"); t.add_column("Review")
+    for tr in tracks:
+        artist, title = tr.query
+        t.add_row(tr.key[:8], tr.source_id or "", artist, title,
+                  tr.first_seen_at[:10], (tr.review_note or "").split(":")[0])
+    console.print(t)
+    console.print("Put one back in the queue: [bold]music-scout shelf restore <key>[/bold]")
+
+
+@shelf.command("restore")
+@click.argument("keys", nargs=-1)
+@click.option("--all", "restore_all", is_flag=True, help="Restore the whole shelf.")
+def shelf_restore(keys: tuple[str, ...], restore_all: bool) -> None:
+    """Move shelved tracks back to the active queue, searched on the next run."""
+    if not keys and not restore_all:
+        console.print("Give one or more keys (from `music-scout shelf`) or --all.")
+        raise SystemExit(1)
+    with store.connect() as conn:
+        n = store.unshelve(conn, None if restore_all else list(keys))
+    console.print(f"[green]restored[/green] {n}")
 
 
 # ---- auth subgroup ----

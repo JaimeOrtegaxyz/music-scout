@@ -11,6 +11,7 @@ import logging
 from datetime import date
 
 from . import store
+from .clean import looks_like_not_a_song
 from .config import Config, load_sources
 from .sources import get_adapter
 from .sources import rss as rss_source
@@ -70,7 +71,7 @@ def _execute(
 
     counts = {
         "fetched": 0, "new": 0, "added": 0,
-        "not_on_spotify": 0, "not_current_year": 0,
+        "not_on_spotify": 0, "not_current_year": 0, "not_a_song": 0,
         "already_in_playlist": 0, "errors": 0,
     }
 
@@ -105,7 +106,7 @@ def _execute(
                     if not artist or not title:
                         continue
                     _, is_new = store.upsert_discovered(
-                        conn, artist, title, source.id, cand.source_url
+                        conn, artist, title, source.id, cand.source_url, cand.raw
                     )
                     if is_new:
                         counts["new"] += 1
@@ -117,6 +118,11 @@ def _execute(
                         )
 
             # ---- 2. resolve + year-filter + add ----
+            shelved = store.shelve_stale(conn)
+            if shelved:
+                log.info("Shelved %d tracks not found in %d days (see `music-scout shelf`).",
+                         shelved, store.SHELVE_AFTER_DAYS)
+            conn.commit()
             # New tracks first; then a bounded slice of due retries, so a big
             # backlog can't spend the dev-app quota before today's finds.
             targets = (store.fetch_pending(conn)
@@ -156,14 +162,23 @@ def _process_one(
     in_playlist: set[str],
     counts: dict[str, int],
 ) -> None:
+    artist, title = track.query
+    if not track.spotify_uri and looks_like_not_a_song(artist, title):
+        store.mark(conn, track.key, status=store.STATUS_NOT_A_SONG)
+        counts["not_a_song"] += 1
+        return
+
     # Resolve to a SpotifyTrack.
     if track.spotify_uri:
         sp_track: SpotifyTrack | None = client.track_by_uri(track.spotify_uri)
     else:
-        sp_track = client.search_track(track.artist, track.title, market=cfg.market)
+        sp_track = client.search_track(artist, title, market=cfg.market)
 
     if sp_track is None:
-        store.mark(conn, track.key, status=store.STATUS_NOT_ON_SPOTIFY)
+        # A shelved track's monthly look stays on the shelf when it misses.
+        miss = (store.STATUS_SHELVED if track.status == store.STATUS_SHELVED
+                else store.STATUS_NOT_ON_SPOTIFY)
+        store.mark(conn, track.key, status=miss)
         counts["not_on_spotify"] += 1
         return
 

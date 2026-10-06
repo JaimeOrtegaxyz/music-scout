@@ -15,6 +15,7 @@ class Candidate:
     title: str
     source_url: str          # URL of the blog post / playlist that mentioned it
     spotify_uri: str | None = None  # set if the source already gave us one
+    raw: str | None = None   # post text it was parsed from — context for `review`
 
 
 # adapter callable: (source) -> iterator of Candidate
