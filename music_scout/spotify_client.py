@@ -17,7 +17,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+import requests
 import spotipy
+import urllib3
 from spotipy.oauth2 import SpotifyOAuth
 
 from .config import Config
@@ -74,7 +76,24 @@ class SpotifyClient:
             show_dialog=True,
             cache_path=str(DATA_DIR / ".spotipy-cache"),
         )
-        return spotipy.Spotify(auth_manager=auth, retries=3, status_retries=3, backoff_factor=0.5)
+        sp = spotipy.Spotify(auth_manager=auth, retries=3, status_retries=3, backoff_factor=0.5)
+        # Replace spotipy's transport retry policy. urllib3 honors Retry-After
+        # on any 429 (even with 429 out of status_forcelist) by sleeping
+        # in-process, so a dev-mode lockout (Retry-After ~18-24h) parked whole
+        # runs for a day and blocked the next scheduled fire. With the header
+        # ignored and 429 not retried, the 429 surfaces as a SpotifyException
+        # carrying its headers, and _handle_429 bails on long cooldowns.
+        retry = urllib3.Retry(
+            total=3, connect=None, read=False, status=3, backoff_factor=0.5,
+            allowed_methods=frozenset(["GET", "POST", "PUT", "DELETE"]),
+            status_forcelist=(500, 502, 503, 504),
+            respect_retry_after_header=False,
+        )
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        sp._session.mount("http://", adapter)
+        sp._session.mount("https://", adapter)
+        return sp
+
 
     def _sleep(self) -> None:
         time.sleep(self._delay)
@@ -145,7 +164,7 @@ class SpotifyClient:
     def playlist_info(self, playlist_id: str) -> dict:
         """{id, name} for an existing playlist. Raises SpotifyException if the
         ID is bogus or not visible to this user (used by `init` to link one)."""
-        info = self._sp._get(f"playlists/{playlist_id}", fields="id,name")
+        info = self._api_get(f"playlists/{playlist_id}", fields="id,name")
         self._sleep()
         return {"id": info["id"], "name": info["name"]}
 
@@ -156,7 +175,7 @@ class SpotifyClient:
         while True:
             # New endpoint: GET /playlists/{id}/items. Each row is {"item": {...}}
             # now (was {"track": {...}}); read both for safety.
-            page = self._sp._get(
+            page = self._api_get(
                 f"playlists/{playlist_id}/items",
                 fields="items(item(uri),track(uri)),next",
                 offset=offset, limit=100,
@@ -177,7 +196,7 @@ class SpotifyClient:
         out: list[SpotifyTrack] = []
         offset = 0
         while True:
-            page = self._sp._get(
+            page = self._api_get(
                 f"playlists/{playlist_id}/items",
                 fields="items(item(uri,name,artists(name),album(release_date)),"
                        "track(uri,name,artists(name),album(release_date))),next",
@@ -224,6 +243,17 @@ class SpotifyClient:
             self._sleep()
 
     # ---- 429 handling ----
+
+    def _api_get(self, path: str, **params) -> dict:
+        """spotipy's raw GET with our 429 policy (bail on long cooldowns)."""
+        try:
+            return self._sp._get(path, **params)
+        except spotipy.SpotifyException as e:
+            if e.http_status == 429:
+                self._handle_429(e)
+                return self._sp._get(path, **params)
+            raise
+
 
     def _handle_429(self, e: spotipy.SpotifyException) -> None:
         retry = 5

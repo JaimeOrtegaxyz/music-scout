@@ -19,6 +19,11 @@ from .spotify_client import RateLimitLockout, SpotifyClient, SpotifyTrack
 
 log = logging.getLogger("music_scout.pipeline")
 
+# Each retry can cost up to three searches (raw, cleaned, loose). Spotify's
+# dev-mode quota is small — an uncapped 500-track backlog pass earned an
+# ~18h lockout (Oct 2026).
+MAX_RETRIES_PER_RUN = 120
+
 
 def run(cfg: Config, client: SpotifyClient) -> dict[str, int]:
     """One full daily pass. Returns a summary count dict."""
@@ -112,7 +117,10 @@ def _execute(
                         )
 
             # ---- 2. resolve + year-filter + add ----
-            targets = store.fetch_pending(conn) + store.fetch_retryable(conn)
+            # New tracks first; then a bounded slice of due retries, so a big
+            # backlog can't spend the dev-app quota before today's finds.
+            targets = (store.fetch_pending(conn)
+                       + store.fetch_retryable(conn)[:MAX_RETRIES_PER_RUN])
             in_playlist = client.playlist_track_uris(cfg.playlist_id)
 
             for track in targets:
@@ -127,6 +135,9 @@ def _execute(
                     log.exception("Failed to process %s — %s", track.artist, track.title)
                     store.mark(conn, track.key, status=store.STATUS_ERROR, error_msg=str(e))
                     counts["errors"] += 1
+                # Per-track commit: a RateLimitLockout unwinds through
+                # store.connect() without reaching its final commit.
+                conn.commit()
     except RateLimitLockout as e:
         log.warning(
             "Spotify cooldown of %ds — stopping. Progress is saved; "
