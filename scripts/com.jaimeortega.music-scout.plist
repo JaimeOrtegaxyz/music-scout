@@ -10,6 +10,7 @@
         <string>-m</string>
         <string>music_scout.cli</string>
         <string>run</string>
+        <string>--catch-up</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/jaimeortega/Documents/GitHub/music-scout</string>
@@ -20,8 +21,11 @@
         <key>Minute</key>
         <integer>0</integer>
     </dict>
+    <!-- Also fire at login: launchd makes up a 09:00 slot missed while
+         asleep, but not one missed while powered off. `--catch-up` no-ops
+         before 09:00 or if today already ran. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
     <key>StandardOutPath</key>
     <string>/Users/jaimeortega/Library/Logs/music-scout/launchd.out.log</string>
     <key>StandardErrorPath</key>

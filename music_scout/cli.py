@@ -4,7 +4,7 @@ for setup, source management, and retries."""
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 
 import click
 from rich.console import Console
@@ -16,6 +16,8 @@ from .paths import LOGS_DIR, ensure_dirs
 from .spotify_client import SpotifyClient
 
 console = Console()
+
+CATCH_UP_AFTER_HOUR = 9  # matches the plist's StartCalendarInterval
 
 
 def _setup_logging() -> None:
@@ -39,6 +41,16 @@ def cli() -> None:
     banner.print_banner()
 
 
+def _catch_up_due() -> bool:
+    """launchd can't make up a 09:00 run the Mac was powered off for, so the
+    agent also fires at login. Today's run log is the "already ran" marker —
+    the same signal `verify` reads."""
+    now = datetime.now()
+    if now.hour < CATCH_UP_AFTER_HOUR:
+        return False
+    return not (LOGS_DIR / f"run-{now.date().isoformat()}.log").exists()
+
+
 @cli.command()
 def init() -> None:
     """Run the first-time setup wizard."""
@@ -46,8 +58,13 @@ def init() -> None:
 
 
 @cli.command()
-def run() -> None:
+@click.option("--catch-up", is_flag=True,
+              help="Skip unless it's past 09:00 and today hasn't run yet. "
+                   "launchd passes this so a login after 09:00 makes up the day.")
+def run(catch_up: bool) -> None:
     """Fetch, resolve, year-filter, add. What launchd calls daily."""
+    if catch_up and not _catch_up_due():
+        return
     _setup_logging()
     cfg = Config.load()
     if not cfg.spotify.client_id:

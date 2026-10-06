@@ -28,6 +28,7 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
         <string>-m</string>
         <string>music_scout.cli</string>
         <string>run</string>
+        <string>--catch-up</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{cwd}</string>
@@ -38,8 +39,11 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
+    <!-- Also fire at login: launchd makes up a 09:00 slot missed while
+         asleep, but not one missed while powered off. `--catch-up` no-ops
+         before 09:00 or if today already ran. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
     <key>StandardOutPath</key>
     <string>{stdout}</string>
     <key>StandardErrorPath</key>
