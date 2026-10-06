@@ -22,6 +22,7 @@ import spotipy
 import urllib3
 from spotipy.oauth2 import SpotifyOAuth
 
+from .clean import artist_matches, clean_artist, clean_title, is_truncated, title_matches
 from .config import Config
 
 SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
@@ -94,33 +95,58 @@ class SpotifyClient:
         sp._session.mount("https://", adapter)
         return sp
 
-
     def _sleep(self) -> None:
         time.sleep(self._delay)
 
     # ---- search / resolve ----
 
     def search_track(self, artist: str, title: str, market: str = "US") -> SpotifyTrack | None:
-        q = f'track:"{title}" artist:"{artist}"'
+        """Find a scraped (artist, title) on Spotify. Tries, cheapest-first:
+        the exact field search on the raw strings, the same on cleaned strings
+        (featured artists, stray quotes, 'のMV suffixes stripped), then a loose
+        free-text search whose top hits must fuzzy-match artist AND title —
+        catches typos, '- Single Version' tails and Hype Machine truncation."""
+        ca, ct = clean_artist(artist), clean_title(title)
+        truncated = is_truncated(title)
+        if not truncated:
+            hit = self._field_search(artist, title, market)
+            if hit:
+                return hit
+            if (ca, ct) != (artist, title) and ca and ct:
+                hit = self._field_search(ca, ct, market)
+                if hit:
+                    return hit
+        if not ca or not ct or len(ca) + len(ct) > 100:
+            return None  # misparsed prose — a loose search would only find noise
+        for t in self._search(f"{ca} {ct}", market, limit=5):
+            names = [a["name"] for a in t["artists"]]
+            if artist_matches(ca, names) and title_matches(ct, t["name"], prefix=truncated):
+                return self._to_track(t)
+        return None
+
+    def _field_search(self, artist: str, title: str, market: str) -> SpotifyTrack | None:
+        items = self._search(f'track:"{title}" artist:"{artist}"', market, limit=1)
+        return self._to_track(items[0]) if items else None
+
+    def _search(self, q: str, market: str, limit: int) -> list[dict]:
         # Spotify rejects queries over 250 chars with a 400. A query that long
         # is garbage from a misparse and would never match — treat as not found.
         if len(q) > 250:
-            return None
+            return []
         try:
-            # Spotify caps search at 10 results/request as of Feb 2026; we only
-            # need the top hit anyway.
-            res = self._sp.search(q=q, type="track", limit=1, market=market)
+            # Spotify caps search at 10 results/request as of Feb 2026.
+            res = self._sp.search(q=q, type="track", limit=limit, market=market)
         except spotipy.SpotifyException as e:
             if e.http_status == 429:
                 self._handle_429(e)
-                return self.search_track(artist, title, market)
+                return self._search(q, market, limit)
             raise
         finally:
             self._sleep()
-        items = (res.get("tracks") or {}).get("items") or []
-        if not items:
-            return None
-        t = items[0]
+        return (res.get("tracks") or {}).get("items") or []
+
+    @staticmethod
+    def _to_track(t: dict) -> SpotifyTrack:
         return SpotifyTrack(
             uri=t["uri"],
             artist_name=t["artists"][0]["name"],
@@ -253,7 +279,6 @@ class SpotifyClient:
                 self._handle_429(e)
                 return self._sp._get(path, **params)
             raise
-
 
     def _handle_429(self, e: spotipy.SpotifyException) -> None:
         retry = 5
