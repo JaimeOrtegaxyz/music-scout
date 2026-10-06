@@ -18,6 +18,7 @@ the lesson lands in the deterministic layer instead of being re-learned weekly.
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 from dataclasses import dataclass, field
@@ -162,6 +163,7 @@ def run(cfg: Config, client: SpotifyClient, *, limit: int = 100,
                     continue
                 decisions.append((track, verdict))
 
+        res.source_notes = _consolidate(res.source_notes)
         counts = {k: 0 for k in ("added", "already_in_playlist", "not_current_year",
                                  "not_on_spotify", "not_a_song", "errors")}
         for track, v in decisions:
@@ -240,6 +242,31 @@ def _ask(batch: list[store.Track]) -> dict | None:
         return None
     parsed = llm._extract_json(raw)
     return parsed if isinstance(parsed, dict) and "tracks" in parsed else None
+
+
+_MERGE_SYSTEM = """\
+You merge parser-bug notes about music-blog feeds. Notes were written per \
+batch, so the same source appears many times with overlapping wording. Output \
+ONE entry per source_id: the distinct failure patterns in a sentence or two, \
+and one concrete, combined parser suggestion. Drop anything already covered. \
+Output ONLY: {"sources": [{"source_id": "...", "pattern": "...", \
+"suggestion": "..."}]}"""
+
+
+def _consolidate(notes: list[dict]) -> list[dict]:
+    """One note per source instead of one per batch. Falls back to keeping
+    the first note per source if the merge call fails."""
+    by_src: dict[str, list[dict]] = {}
+    for n in notes:
+        by_src.setdefault(str(n.get("source_id", "?")), []).append(n)
+    if all(len(v) == 1 for v in by_src.values()):
+        return notes
+    raw = llm.complete(_MERGE_SYSTEM, json.dumps(notes, ensure_ascii=False),
+                       max_tokens=3000, model=llm.REVIEW_MODEL)
+    merged = llm._extract_json(raw) if raw else None
+    if isinstance(merged, dict) and isinstance(merged.get("sources"), list):
+        return [m for m in merged["sources"] if isinstance(m, dict)]
+    return [v[0] for v in by_src.values()]
 
 
 def _backfill_raw_text(conn, pool: list[store.Track]) -> None:
