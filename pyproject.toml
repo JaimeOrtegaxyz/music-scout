@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "music-scout"
-version = "0.1.0"
+dynamic = ["version"]  # single source: music_scout/__init__.py
 description = "Auto-fetches current-year tracks from music blogs and Spotify playlists and adds them to a single Spotify playlist on a schedule."
 readme = "README.md"
 license = { text = "MIT" }
@@ -20,6 +20,9 @@ dependencies = [
     "PyYAML>=6.0",           # Config files
     "platformdirs>=4.0",     # OS-correct cache locations
 ]
+
+[tool.hatch.version]
+path = "music_scout/__init__.py"
 
 [project.optional-dependencies]
 # `pip install music-scout[ai]` enables LLM-derived parse recipes via the
