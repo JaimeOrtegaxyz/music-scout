@@ -6,7 +6,7 @@
 
 I love music blogs. Copying their recommendations into a playlist so I can actually listen to them all together is a pain in the ass, so I built **music scout** to do it for me.
 
-Once a day it reads the blogs, finds each song on Spotify, and adds this year's releases to one playlist, newest first. It logs every track it has seen, so nothing gets added twice and songs Spotify doesn't have yet get another look tomorrow.
+Once a day it reads the blogs, finds each song on Spotify, and adds this year's releases to one playlist, newest first. It logs every track it has seen, so nothing gets added twice and songs Spotify doesn't have yet get looked for again later.
 
 ![scout status — today's adds, the not-yet-on-Spotify pile, and the daily launchd job](music-scout-screenshot.png)
 
@@ -16,7 +16,7 @@ Once a day it reads the blogs, finds each song on Spotify, and adds this year's 
 - **Hype Machine** — its popular page (their RSS is dead, so we scrape the page).
 - **Spotify playlists** — point it at an editorial playlist and it'll mine that too.
 
-It keeps only tracks released this year; older ones are logged and skipped. Tracks Spotify doesn't have yet get another search every day until they show up.
+It keeps only tracks released this year; older ones are logged and skipped. Tracks Spotify doesn't have yet keep getting searched for, less often as they age, and go on a shelf after 60 days.
 
 ## Setup
 
@@ -79,7 +79,7 @@ sources → resolve on Spotify → keep this year's → add to the playlist
 
 That SQLite file is the whole trick. It sits between "found a song" and "put it in Spotify." A failed search waits and gets retried, daily at first and then less often; an already-added track is skipped. Anything still missing after 60 days goes on a shelf: kept, checked once a month, never deleted.
 
-Blogs don't all write headlines the same way, so some misses are songs we parsed wrong rather than songs Spotify doesn't have. Once a week `scout review` hands misses that have been stuck a week to Claude, along with the post they came from. Claude corrects the bad parses, drops posts that weren't about a song, and points out feeds whose parser needs fixing. Corrections only get added if Spotify actually has them. The daily run never calls an LLM.
+Blogs don't all write headlines the same way, so some misses are songs we parsed wrong rather than songs Spotify doesn't have. Once a week `scout review` hands misses that have been stuck a week to Claude, along with the post they came from. Claude corrects the bad parses, drops posts that weren't about a song, and points out feeds whose parser needs fixing. Corrections only get added if Spotify actually has them. The daily run never calls an LLM. To put the review on a schedule, copy `scripts/com.jaimeortega.music-scout-review.plist` into `~/Library/LaunchAgents/` and `launchctl load` it (edit the paths first if your checkout lives somewhere else).
 
 launchd runs it daily at 09:00, and at login if the Mac was off at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change `Hour`/`Minute` in `music_scout/scheduler.py` and re-run `scout schedule install`.
 
