@@ -14,9 +14,7 @@ CONFIG_PATH = DATA_DIR / "config.yaml"
 SOURCES_PATH = DATA_DIR / "sources.yaml"
 STATE_DB_PATH = DATA_DIR / "state.sqlite"
 
-LAUNCHD_PLIST_NAME = "com.jaimeortega.music-scout.plist"
-LAUNCHD_PLIST_TEMPLATE = REPO_ROOT / "scripts" / LAUNCHD_PLIST_NAME
-LAUNCHD_PLIST_INSTALLED = Path.home() / "Library" / "LaunchAgents" / LAUNCHD_PLIST_NAME
+LAUNCH_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
 
 # launchd's stdio files must live outside ~/Documents: TCC's com.apple.macl
 # xattr on files there goes stale and launchd's spawn-time open fails with

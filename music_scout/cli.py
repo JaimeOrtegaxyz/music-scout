@@ -371,24 +371,36 @@ def sources_fix(source_id: str | None, fix_all: bool) -> None:
 
 @cli.group()
 def schedule() -> None:
-    """Manage the launchd daily job."""
+    """Manage the launchd jobs."""
 
 
 @schedule.command("install")
-def schedule_install() -> None:
-    scheduler.install()
-    console.print("[green]installed[/green] — daily at 09:00.")
+@click.option("--verify", "with_verify", is_flag=True,
+              help="Also check the run at 09:15 and notify if it broke.")
+@click.option("--review", "with_review", is_flag=True,
+              help="Also have Claude review stuck misses once a week.")
+def schedule_install(with_verify: bool, with_review: bool) -> None:
+    """Install the daily run (and optionally the extras)."""
+    names = ("run",) + ("verify",) * with_verify + ("review",) * with_review
+    scheduler.install(names)
+    for name in names:
+        job = scheduler.JOBS[name]
+        when = "weekly" if name == "review" else f"daily at {job.hour:02d}:{job.minute:02d}"
+        console.print(f"[green]installed[/green] {name} — {when}.")
 
 
 @schedule.command("uninstall")
 def schedule_uninstall() -> None:
+    """Remove every music-scout launchd job."""
     scheduler.uninstall()
     console.print("[green]uninstalled[/green].")
 
 
 @schedule.command("status")
 def schedule_status() -> None:
-    console.print(scheduler.status())
+    """Show whether each launchd job is loaded."""
+    for name in scheduler.JOBS:
+        console.print(f"{name:<7} {scheduler.status(name)}")
 
 
 # ---- summary helper ----

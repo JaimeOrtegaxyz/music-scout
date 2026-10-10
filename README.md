@@ -25,8 +25,8 @@ You need a Mac (the daily run is a launchd job), Python 3.11 or newer, and Spoti
 ### 1. Install
 
 ```bash
-git clone https://github.com/JaimeOrtegaxyz/music-scout ~/Documents/GitHub/music-scout
-cd ~/Documents/GitHub/music-scout
+git clone https://github.com/JaimeOrtegaxyz/music-scout
+cd music-scout
 ./install.sh
 ```
 
@@ -71,6 +71,7 @@ scout backfill --source <id>    # pull this year's posts from a feed you just ad
 scout retry                     # re-check the not-on-Spotify pile now
 scout shelf                     # what never turned up in 60 days
 scout run                       # one full pass (what the daily job runs)
+scout schedule install --verify # get a notification when a daily run breaks
 scout schedule uninstall        # stop the daily job
 ```
 
@@ -83,7 +84,7 @@ sources → resolve on Spotify → keep this year's → add to the playlist
 
 That SQLite file is the whole trick. It sits between "found a song" and "put it in Spotify." An already-added track is skipped. A failed search gets retried, daily at first and then less often, and anything still missing after 60 days goes on a shelf: kept, checked once a month, never deleted.
 
-launchd runs it daily at 09:00, and at login if the Mac was off at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change `Hour`/`Minute` in `music_scout/scheduler.py` and re-run `scout schedule install`.
+launchd runs it daily at 09:00, and at login if the Mac was off at 09:00. Nothing stays resident between runs, and the only account involved is your own Spotify login. To run at a different time, change the hour in `music_scout/scheduler.py` and re-run `scout schedule install`.
 
 Your config, the track DB and logs live in `./data` inside the checkout, which is why the install is editable and has to run from there. That folder stays out of git; only the `*.example.yaml` templates are committed.
 
@@ -92,7 +93,7 @@ Your config, the track DB and logs live in `./data` inside the checkout, which i
 Every blog titles its posts differently: `Artist - Song`, `Stream: Artist – Song`, `Artist『Song』を公開`, or the truly cursed ones where the title is "EP REVIEW" and the actual song is buried in the post body. A generic parser handles the plain ones. If you have the `claude` CLI, or an `ANTHROPIC_API_KEY` and `./install.sh --ai`, Claude helps with the rest in two places:
 
 - **When you add a feed**, it writes a small regex recipe for it into `sources.yaml`. `scout sources fix <id>` redoes one; `--all` redoes them all.
-- **`scout review`** hands it misses that have been stuck a week, along with the post they came from. It corrects bad parses, drops posts that weren't about a song, and names feeds whose recipe needs fixing. Corrections only get added if Spotify actually has them. To run it weekly, copy `scripts/com.jaimeortega.music-scout-review.plist` into `~/Library/LaunchAgents/` and `launchctl load` it (edit the paths first; they point at my checkout).
+- **`scout review`** hands it misses that have been stuck a week, along with the post they came from. It corrects bad parses, drops posts that weren't about a song, and names feeds whose recipe needs fixing. Corrections only get added if Spotify actually has them. To run it weekly: `scout schedule install --review`.
 
 The daily run never calls a model, so it costs nothing.
 
@@ -100,7 +101,7 @@ The daily run never calls a model, so it costs nothing.
 
 To update: `git pull`, then `./install.sh` again. It's safe to re-run.
 
-To remove: `scout schedule uninstall` (stops the daily job), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
+To remove: `scout schedule uninstall` (removes the scheduled jobs), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
 
 ## License
 

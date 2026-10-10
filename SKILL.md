@@ -5,7 +5,7 @@ description: Manage the music-scout daily Spotify scraper. Use when the user wan
 
 # music-scout
 
-You are working in the user's music-scout repo (`~/Documents/GitHub/music-scout/`). It's a Python CLI that runs once a day via launchd: fetches tracks from blogs and Spotify playlists, filters to current-year releases, and auto-adds them to a single Spotify playlist (newest on top).
+You are working in the user's music-scout checkout. It's a Python CLI that runs once a day via launchd: fetches tracks from blogs and Spotify playlists, filters to current-year releases, and auto-adds them to a single Spotify playlist (newest on top).
 
 ## Mental model
 
@@ -17,7 +17,7 @@ Three-stage pipeline, each persisted to `data/state.sqlite`:
 
 **The shelf.** A miss still unfound after 60 days moves to `shelved` — not deleted, still listed (`music-scout shelf`), re-searched once a month, restorable with `music-scout shelf restore <key>|--all`. It's "probably a real song, we just never found it", not a verdict.
 
-**The weekly review** (`music-scout review`, `review.py`). Misses stuck 7+ days get one look from Claude, which reads the saved post text (`raw_text`) and answers fix / not_a_song / looks_right. Fixes are searched immediately and only real Spotify hits get added. Recurring per-source failures come back as parser notes in `data/logs/review-<date>.md` — act on them with `sources fix <id>` or a hand-written recipe, so the fix lands in the deterministic layer. LLM backend: `claude -p` (tool-less, hooks silenced) or `ANTHROPIC_API_KEY`. Scheduled by `scripts/com.jaimeortega.music-scout-review.plist` (daily 10:30 + login, `--catch-up` makes it weekly).
+**The weekly review** (`music-scout review`, `review.py`). Misses stuck 7+ days get one look from Claude, which reads the saved post text (`raw_text`) and answers fix / not_a_song / looks_right. Fixes are searched immediately and only real Spotify hits get added. Recurring per-source failures come back as parser notes in `data/logs/review-<date>.md` — act on them with `sources fix <id>` or a hand-written recipe, so the fix lands in the deterministic layer. LLM backend: `claude -p` (tool-less, hooks silenced) or `ANTHROPIC_API_KEY`. Scheduled with `scout schedule install --review` (daily 10:30 + login, `--catch-up` makes it weekly).
 
 State table is the source of truth. Re-running `music-scout run` is idempotent — already-`added` tracks are skipped, `not_on_spotify` ones get re-resolved.
 
@@ -66,11 +66,10 @@ music-scout verify --notify     # + macOS notification when warn or broken
 
 `added_today==0` on its own is **not** a failure — some days there's simply nothing new. It only reads as broken alongside errors or a 403.
 
-**Run it on a schedule (the "ping me when it breaks" loop):** a companion launchd job runs `verify --notify` at 09:15, right after the daily run, so failures surface as a macOS notification instead of a stale playlist. Install it (mirrors `schedule install`):
+**Run it on a schedule (the "ping me when it breaks" loop):** a companion launchd job runs `verify --notify` at 09:15, right after the daily run, so failures surface as a macOS notification instead of a stale playlist. Install it with:
 
 ```bash
-cp scripts/com.jaimeortega.music-scout-verify.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.jaimeortega.music-scout-verify.plist
+scout schedule install --verify
 ```
 
 To iterate on it live from a Claude Code session instead, `/loop 30m music-scout verify --json` and react to the verdict. Keep the check local (launchd/loop, not `/schedule` cloud) — the DB and logs it reads live on this Mac.
@@ -106,7 +105,7 @@ tail -f data/logs/run-$(date +%Y-%m-%d).log
 
 - Auth: Spotify Developer App OAuth (client_id/secret + refresh_token in `data/config.yaml`).
 - One playlist: `config.yaml` `playlist_id` / `playlist_name`, created by the wizard.
-- Scheduler: launchd plist at `scripts/com.jaimeortega.music-scout.plist`, installed to `~/Library/LaunchAgents/`, runs daily at 09:00 and at login with `run --catch-up` (no-op before 09:00 or if today's run log exists) — launchd makes up a slot missed asleep, not one missed powered off.
+- Scheduler: `scheduler.py` renders launchd plists per machine into `~/Library/LaunchAgents/` (labels `local.music-scout`, `-verify`, `-review`; nothing machine-specific in git). The daily one fires at 09:00 and at login with `run --catch-up` (no-op before 09:00 or if today's run log exists) — launchd makes up a slot missed asleep, not one missed powered off.
 - Listening: [cliamp](https://github.com/bjarneo/cliamp) is an interactive TUI — it can't take Spotify URIs as args, so there's no `listen` command. The user runs `cliamp` separately and picks the "Music Scout" playlist from its Spotify browser. cliamp shares the same Spotify dev app (redirect `127.0.0.1:19872/login`).
 - Region: hardcoded to `US`.
-- Repo: `~/Documents/GitHub/music-scout/`. README at the root has the user-facing version.
+- README at the repo root has the user-facing version.

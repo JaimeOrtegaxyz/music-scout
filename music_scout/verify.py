@@ -22,10 +22,10 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 
-from . import store
+from . import scheduler, store
 from .paths import LOGS_DIR, STATE_DB_PATH
 
-LAUNCHD_LABEL = "com.jaimeortega.music-scout"
+LAUNCHD_LABEL = scheduler.JOBS["run"].label
 
 # Above this many tracks stuck awaiting Spotify, retries are probably failing
 # systematically rather than just accumulating normally.
