@@ -13,7 +13,7 @@ Once a day it reads the blogs, finds each song on Spotify, and adds this year's 
 ## What it pulls from
 
 - **RSS feeds** — any music blog with a feed.
-- **Hype Machine** — its popular page (their RSS is dead, so we scrape the page).
+- **Hype Machine** (opt-in) — the popular page. Their RSS is dead, so this one scrapes it. Type `hypem` during `scout init` if you want it.
 - **Spotify playlists** — point it at an editorial playlist and it'll mine that too.
 
 It keeps only tracks released this year; older ones are logged and skipped. Tracks Spotify doesn't have yet keep getting searched for, less often as they age, and go on a shelf after 60 days.

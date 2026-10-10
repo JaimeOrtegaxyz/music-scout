@@ -9,7 +9,7 @@ sources:
   - id: hypem-popular
     type: hypem
     name: Hype Machine — Popular
-    enabled: true
+    enabled: false  # opt-in: scrapes hypem.com/popular (their RSS is gone)
 
   - id: aquarium-drunkard
     type: rss
