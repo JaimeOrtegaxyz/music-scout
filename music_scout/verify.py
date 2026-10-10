@@ -186,7 +186,7 @@ def build_report(
         r.issues.append(
             "Spotify returned 403 today — auth is broken. Check Premium is active, "
             "the app's Web API toggle is on, and you're in User Management, then "
-            "`music-scout auth reset` and re-run."
+            "`scout auth reset` and re-run."
         )
         verdict = _worse(verdict, "broken")
     if r.ran_today and r.added_today == 0 and r.errors_today > 0:
@@ -199,7 +199,7 @@ def build_report(
     if check_launchd and not r.launchd_loaded:
         r.issues.append(
             "launchd job isn't loaded — the daily run won't fire. Reinstall with "
-            "`music-scout schedule install`."
+            "`scout schedule install`."
         )
         verdict = _worse(verdict, "broken")
 
@@ -209,13 +209,13 @@ def build_report(
         r.issues.append(
             f"No run today and last activity was {days:.1f} days ago. launchd "
             "doesn't catch up runs missed while the Mac was asleep at 09:00 — "
-            "run `music-scout run` now to refresh."
+            "run `scout run` now to refresh."
         )
         verdict = _worse(verdict, "warn")
     if r.rate_limited_in_log:
         r.issues.append(
             "Hit a Spotify rate-limit cooldown today — progress is saved per track; "
-            "`music-scout retry` resumes the rest."
+            "`scout retry` resumes the rest."
         )
         verdict = _worse(verdict, "warn")
     if r.retry_backlog > backlog_ceiling:

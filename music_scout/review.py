@@ -12,7 +12,7 @@ one look from Claude, which reads the original post text and answers:
   looks_right  → parse is fine, probably just not on Spotify yet — left alone
 
 When one source keeps failing the same way, Claude says so; that goes in the
-report as a parser fix to make (`music-scout sources fix <id>` or by hand), so
+report as a parser fix to make (`scout sources fix <id>` or by hand), so
 the lesson lands in the deterministic layer instead of being re-learned weekly.
 """
 

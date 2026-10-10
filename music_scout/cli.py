@@ -133,7 +133,7 @@ def status() -> None:
     console.print(f"Added today:        [green]{len(added_today)}[/green]")
     console.print(f"Awaiting Spotify:   [yellow]{backlog}[/yellow] ({due} due for a search)")
     console.print(f"Shelf:              {shelved} (never found in {store.SHELVE_AFTER_DAYS} days "
-                  f"— `music-scout shelf`)")
+                  f"— `scout shelf`)")
     console.print(f"launchd:            {scheduler.status()}")
     if added_today:
         t = Table(title="Today's adds", show_lines=False)
@@ -267,7 +267,7 @@ def shelf(ctx: click.Context) -> None:
         t.add_row(tr.key[:8], tr.source_id or "", artist, title,
                   tr.first_seen_at[:10], (tr.review_note or "").split(":")[0])
     console.print(t)
-    console.print("Put one back in the queue: [bold]music-scout shelf restore <key>[/bold]")
+    console.print("Put one back in the queue: [bold]scout shelf restore <key>[/bold]")
 
 
 @shelf.command("restore")
@@ -276,7 +276,7 @@ def shelf(ctx: click.Context) -> None:
 def shelf_restore(keys: tuple[str, ...], restore_all: bool) -> None:
     """Move shelved tracks back to the active queue, searched on the next run."""
     if not keys and not restore_all:
-        console.print("Give one or more keys (from `music-scout shelf`) or --all.")
+        console.print("Give one or more keys (from `scout shelf`) or --all.")
         raise SystemExit(1)
     with store.connect() as conn:
         n = store.unshelve(conn, None if restore_all else list(keys))

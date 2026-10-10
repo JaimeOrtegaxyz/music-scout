@@ -15,11 +15,11 @@ Three-stage pipeline, each persisted to `data/state.sqlite`:
 2. **resolve** — search Spotify for each candidate, get `spotify_uri` + `release_date`. The search (`clean.py` + `SpotifyClient.search_track`) tries the exact field query on the raw strings, then on cleaned strings (featured artists, stray quotes, nichemusic's `'のMV` suffix stripped), then a loose query whose hits must fuzzy-match artist *and* title. The DB keeps the scraped strings as the dedupe key; review corrections live in `search_artist`/`search_title`. Review/announcement posts → `not_a_song` (terminal). No hit → `not_on_spotify`, retried on a widening schedule (daily while fresh, then every 3/7/14 days — `store.RETRY_SCHEDULE`).
 3. **filter + add** — drop tracks where `release_date.year != current_year` (→ `not_current_year`, terminal). Everything else is added to the single playlist (`config.yaml` `playlist_id`) at position 0, deduped against what's already there.
 
-**The shelf.** A miss still unfound after 60 days moves to `shelved` — not deleted, still listed (`music-scout shelf`), re-searched once a month, restorable with `music-scout shelf restore <key>|--all`. It's "probably a real song, we just never found it", not a verdict.
+**The shelf.** A miss still unfound after 60 days moves to `shelved` — not deleted, still listed (`scout shelf`), re-searched once a month, restorable with `scout shelf restore <key>|--all`. It's "probably a real song, we just never found it", not a verdict.
 
-**The weekly review** (`music-scout review`, `review.py`). Misses stuck 7+ days get one look from Claude, which reads the saved post text (`raw_text`) and answers fix / not_a_song / looks_right. Fixes are searched immediately and only real Spotify hits get added. Recurring per-source failures come back as parser notes in `data/logs/review-<date>.md` — act on them with `sources fix <id>` or a hand-written recipe, so the fix lands in the deterministic layer. LLM backend: `claude -p` (tool-less, hooks silenced) or `ANTHROPIC_API_KEY`. Scheduled with `scout schedule install --review` (daily 10:30 + login, `--catch-up` makes it weekly).
+**The weekly review** (`scout review`, `review.py`). Misses stuck 7+ days get one look from Claude, which reads the saved post text (`raw_text`) and answers fix / not_a_song / looks_right. Fixes are searched immediately and only real Spotify hits get added. Recurring per-source failures come back as parser notes in `data/logs/review-<date>.md` — act on them with `sources fix <id>` or a hand-written recipe, so the fix lands in the deterministic layer. LLM backend: `claude -p` (tool-less, hooks silenced) or `ANTHROPIC_API_KEY`. Scheduled with `scout schedule install --review` (daily 10:30 + login, `--catch-up` makes it weekly).
 
-State table is the source of truth. Re-running `music-scout run` is idempotent — already-`added` tracks are skipped, `not_on_spotify` ones get re-resolved.
+State table is the source of truth. Re-running `scout run` is idempotent — already-`added` tracks are skipped, `not_on_spotify` ones get re-resolved.
 
 ## Important context: Spotify Feb 2026 API changes
 
@@ -31,22 +31,22 @@ This project hit the Feb 2026 Web API breaking changes head-on. Things to rememb
 
 ## What the user typically wants
 
-- **"Add this blog"** → `music-scout sources add <url>`. If the URL isn't an RSS feed, the wizard tries to discover one (look for `<link rel="alternate" type="application/rss+xml">` in the HTML head; common paths: `/feed`, `/rss`, `/index.xml`). Confirm before saving. Adding an RSS source auto-derives an LLM parse recipe if a backend is available.
-- **"This feed's parsing is junk"** → `music-scout sources fix <id>` (or `--all`). Re-derives the recipe. If you're in a Claude Code session, you can also just inspect a few entries yourself and hand-write the `parse: {field, regex}` block in `sources.yaml` — named groups `artist` and `title`, regex runs against the chosen field's plain text (HTML stripped for summary/content).
-- **"What did I get today?"** → `music-scout status`, then summarize. For detail: `SELECT artist, title, release_date FROM tracks WHERE status='added' AND date(added_at)=date('now')`.
-- **"Retry the missing ones"** → `music-scout retry` (only searches misses that are due; `shelf restore` first to include shelved ones).
-- **"Review the backlog"** → `music-scout review` (`--dry-run` to preview verdicts, `--limit N`). Then read the report's "Parser patterns to fix" section and offer to fix those sources.
-- **"What never showed up?"** → `music-scout shelf`.
-- **"It's broken"** or **"is the daily run healthy?"** → run `music-scout verify` first (see below), then act on its verdict. Only fall back to reading `data/logs/run-<latest>.log` by hand if verify's headline isn't specific enough.
+- **"Add this blog"** → `scout sources add <url>`. If the URL isn't an RSS feed, the wizard tries to discover one (look for `<link rel="alternate" type="application/rss+xml">` in the HTML head; common paths: `/feed`, `/rss`, `/index.xml`). Confirm before saving. Adding an RSS source auto-derives an LLM parse recipe if a backend is available.
+- **"This feed's parsing is junk"** → `scout sources fix <id>` (or `--all`). Re-derives the recipe. If you're in a Claude Code session, you can also just inspect a few entries yourself and hand-write the `parse: {field, regex}` block in `sources.yaml` — named groups `artist` and `title`, regex runs against the chosen field's plain text (HTML stripped for summary/content).
+- **"What did I get today?"** → `scout status`, then summarize. For detail: `SELECT artist, title, release_date FROM tracks WHERE status='added' AND date(added_at)=date('now')`.
+- **"Retry the missing ones"** → `scout retry` (only searches misses that are due; `shelf restore` first to include shelved ones).
+- **"Review the backlog"** → `scout review` (`--dry-run` to preview verdicts, `--limit N`). Then read the report's "Parser patterns to fix" section and offer to fix those sources.
+- **"What never showed up?"** → `scout shelf`.
+- **"It's broken"** or **"is the daily run healthy?"** → run `scout verify` first (see below), then act on its verdict. Only fall back to reading `data/logs/run-<latest>.log` by hand if verify's headline isn't specific enough.
 
 ## Verifying a run (health check)
 
-The daily run used to fail silently — a write 403, or a Mac asleep at 09:00, and nobody noticed for days. `music-scout verify` turns the DB + today's log + launchctl into one verdict so a loop (or you) can tell at a glance:
+The daily run used to fail silently — a write 403, or a Mac asleep at 09:00, and nobody noticed for days. `scout verify` turns the DB + today's log + launchctl into one verdict so a loop (or you) can tell at a glance:
 
 ```bash
-music-scout verify              # human summary; exits 0=ok 1=warn 2=broken
-music-scout verify --json       # structured report for a loop / dashboard
-music-scout verify --notify     # + macOS notification when warn or broken
+scout verify              # human summary; exits 0=ok 1=warn 2=broken
+scout verify --json       # structured report for a loop / dashboard
+scout verify --notify     # + macOS notification when warn or broken
 ```
 
 **The DB is ground truth** — `added_today`, `retry_backlog`, `errors_today` come from `state.sqlite`, not from parsing prose. Today's log and `launchctl` only explain *why* the numbers look wrong.
@@ -55,11 +55,11 @@ music-scout verify --notify     # + macOS notification when warn or broken
 
 | Verdict | Trigger | Action |
 |---|---|---|
-| `broken` | `403` in today's log | Auth lapsed. Check Premium active + app Web API toggle on + you're in User Management, then `music-scout auth reset` and re-run. |
+| `broken` | `403` in today's log | Auth lapsed. Check Premium active + app Web API toggle on + you're in User Management, then `scout auth reset` and re-run. |
 | `broken` | ran today, `added_today==0` **and** `errors_today>0` | Systemic Spotify failure, not a quiet news day. Read today's run log. |
-| `broken` | launchd job not loaded | `music-scout schedule install`. |
-| `warn` | no run today, last activity > ~26h ago | Mac likely slept through 09:00 (launchd doesn't backfill). `music-scout run` now. |
-| `warn` | rate-limit cooldown in today's log | Progress saved per track; `music-scout retry` resumes. |
+| `broken` | launchd job not loaded | `scout schedule install`. |
+| `warn` | no run today, last activity > ~26h ago | Mac likely slept through 09:00 (launchd doesn't backfill). `scout run` now. |
+| `warn` | rate-limit cooldown in today's log | Progress saved per track; `scout retry` resumes. |
 | `warn` | retry backlog over ceiling (default 500) | Retries may be failing, not just accumulating. Investigate a few `not_on_spotify` rows. |
 | `warn` | launchd last exit code nonzero | The most recent scheduled run failed — read its log. |
 | `ok` | a run happened and looks clean | Nothing. Headline reports adds + backlog. |
@@ -72,7 +72,7 @@ music-scout verify --notify     # + macOS notification when warn or broken
 scout schedule install --verify
 ```
 
-To iterate on it live from a Claude Code session instead, `/loop 30m music-scout verify --json` and react to the verdict. Keep the check local (launchd/loop, not `/schedule` cloud) — the DB and logs it reads live on this Mac.
+To iterate on it live from a Claude Code session instead, `/loop 30m scout verify --json` and react to the verdict. Keep the check local (launchd/loop, not `/schedule` cloud) — the DB and logs it reads live on this Mac.
 
 ## Hard rules
 

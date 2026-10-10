@@ -120,7 +120,7 @@ def _execute(
             # ---- 2. resolve + year-filter + add ----
             shelved = store.shelve_stale(conn)
             if shelved:
-                log.info("Shelved %d tracks not found in %d days (see `music-scout shelf`).",
+                log.info("Shelved %d tracks not found in %d days (see `scout shelf`).",
                          shelved, store.SHELVE_AFTER_DAYS)
             conn.commit()
             # New tracks first; then a bounded slice of due retries, so a big
