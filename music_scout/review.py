@@ -20,14 +20,13 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from bs4 import BeautifulSoup
 
-from . import llm, store
+from . import llm, notify as notify_mod, store
 from .config import Config
 from .paths import LOGS_DIR
 from .spotify_client import RateLimitLockout, SpotifyClient
@@ -342,12 +341,5 @@ def notify(res: ReviewResult) -> None:
     if res.source_notes:
         srcs = sorted({s.get("source_id", "?") for s in res.source_notes})
         body += f"; parser notes for {', '.join(srcs)}"
-    try:
-        subprocess.run(
-            ["osascript", "-e",
-             f'display notification "{body}" with title "music-scout review"'],
-            capture_output=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    notify_mod.send("Weekly review", body)
 

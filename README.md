@@ -101,7 +101,7 @@ The daily run never calls a model, so it costs nothing.
 
 To update: `git pull`, then `./install.sh` again. It's safe to re-run.
 
-To remove: `scout schedule uninstall` (removes the scheduled jobs), then `rm ~/.local/bin/scout` and `rm -rf .venv`.
+To remove: `scout schedule uninstall` (removes the scheduled jobs), then `rm ~/.local/bin/scout`, `rm -rf .venv` and `rm -rf ~/Library/Application\ Support/music-scout ~/Library/Logs/music-scout`.
 
 ## License
 

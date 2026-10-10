@@ -22,7 +22,7 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 
-from . import scheduler, store
+from . import notify as notify_mod, scheduler, store
 from .paths import LOGS_DIR, STATE_DB_PATH
 
 LAUNCHD_LABEL = scheduler.JOBS["run"].label
@@ -248,14 +248,6 @@ def _headline(r: HealthReport) -> str:
 
 def notify(report: HealthReport) -> None:
     """Post a macOS notification. Best-effort — never raises."""
-    icon = {"ok": "✓", "warn": "⚠", "broken": "✗"}[report.verdict]
-    title = f"music-scout {icon} {report.verdict}"
-    body = report.headline.replace('"', "'")
-    try:
-        subprocess.run(
-            ["osascript", "-e",
-             f'display notification "{body}" with title "{title}"'],
-            capture_output=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # "Broken — launchd job isn't loaded…" → title "Broken", body the rest.
+    lead, _, rest = report.headline.partition(" — ")
+    notify_mod.send(lead, rest or report.headline)
