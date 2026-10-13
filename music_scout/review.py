@@ -53,8 +53,10 @@ artist/title strings need cleaning.
 For each item choose one verdict:
 - "fix": the parser got the artist or title wrong. Give the corrected artist \
 and title as they would appear on Spotify: primary artist only, no "feat.", \
-no quotes, no "MV"/"video"/"premiere" words, no album name in the title. If \
-the post is about an album or EP but names a focus single, give that single.
+no quotes, no "MV"/"video"/"premiere" words, no album name in the title. Keep a \
+remix/edit/live/acoustic credit when the post is about that version, written \
+the way Spotify does ("Title - X Remix") — that version is the track to add. \
+If the post is about an album or EP but names a focus single, give that single.
 - "not_a_song": the post is not about one specific track (album review with \
 no named track, tour or festival news, interview, roundup, DJ mix, label news).
 - "looks_right": the parse is already correct; the track is probably just not \

@@ -114,31 +114,106 @@ def title_matches(wanted: str, got: str, *, prefix: bool = False) -> bool:
     return SequenceMatcher(None, w, g).ratio() >= 0.85
 
 
-# A cut the post didn't ask for: "Song - X Remix", "Song (Live)", "Song - Instrumental".
-_VARIANT_RE = re.compile(
-    r"\b(remix|mix|edit|rework|flip|bootleg|dub|vip|live|session|acoustic|"
-    r"instrumental|karaoke|demo|sped up|slowed|cover)\b",
+# Version tags, by family: a post's "edit" and Spotify's "remix" are the same ask.
+_FAMILIES = {
+    "remix": r"remix(?:es|ed)?|rmx|re-?edit|edit|rework(?:ed)?|flip|bootleg|vip|dub|mix",
+    "live": r"live|session",
+    "acoustic": r"acoustic|stripped|unplugged",
+    "instrumental": r"instrumental",
+    "demo": r"demo",
+    "speed": r"sped up|slowed",
+    "karaoke": r"karaoke",
+    "cover": r"cover",
+}
+_FAMILY_RES = {f: re.compile(rf"\b(?:{rx})\b", re.IGNORECASE) for f, rx in _FAMILIES.items()}
+# Tags that don't make a different recording.
+_BENIGN_RE = re.compile(
+    r"\b(radio|single|album|clean|explicit|short|extended|original|main)\s+"
+    r"(edit|version|mix|cut)\b|\b(\d{4}\s+)?remaster(ed)?\b",
     re.IGNORECASE,
 )
+# Prose that announces a version: "a new remix", "the live version", "recorded live".
+_PROSE_RE = re.compile(
+    r"\b(remix(?:es|ed)?|rework(?:ed)?|re-?edit|bootleg)\b"
+    r"|\b(live|acoustic|stripped|unplugged|demo|instrumental)\s+"
+    r"(version|session|recording|take|performance|rendition|cut|edit)\b"
+    r"|\b(recorded|performed)\s+live\b",
+    re.IGNORECASE,
+)
+_TAG_WORDS = ("remix", "rework", "bootleg", "edit", "session", "acoustic", "unplugged",
+              "stripped", "instrumental", "demo")
+_NOT_NAMES = {"feat", "featuring", "with", "the", "and", "extended", "original",
+              "version", "edit", "mix", "remix", "remixes", "rework", "session"}
 
 
-def _version_tail(s: str) -> str:
-    """The version part of a track name: after ' - ' or inside brackets."""
-    return s[len(_strip_version(s)):] + " ".join(re.findall(r"[\(\[](.*?)[\)\]]", s))
+def _segments(s: str) -> list[str]:
+    """Version-bearing parts of a title: bracket contents (an unclosed one
+    too — Hype Machine truncates) and whatever follows ' - '."""
+    segs = re.findall(r"[\(\[]([^\)\]]*)(?:[\)\]]|$)", s)
+    m = re.search(r"\s[-–]\s(.*)$", s)
+    if m:
+        segs.append(re.sub(r"[\(\[].*?(?:[\)\]]|$)", " ", m.group(1)))
+    return segs
 
 
-def pick_version(wanted: str, items: list[dict]) -> dict:
-    """Of several Spotify hits for one song, the cut the post meant: an exact
-    title first, else one without a remix/live/instrumental tag the post
-    didn't name, else Spotify's own top hit."""
+def _versions(s: str) -> dict[str, set[str]]:
+    """{family: name tokens} for each version tag in a title:
+    'Song (Terrence Parker Remix)' → {'remix': {'terrence', 'parker'}}."""
+    out: dict[str, set[str]] = {}
+    for seg in _segments(s):
+        seg = _BENIGN_RE.sub(" ", seg)
+        if seg.rstrip().endswith(("...", "…")):
+            # "(Terrence Parker Extended Remi..." — finish the cut-off word.
+            last = (norm(seg).split() or [""])[-1]
+            if len(last) >= 3:
+                seg += " " + next((w for w in _TAG_WORDS if w.startswith(last)), "")
+        fams = [f for f, rx in _FAMILY_RES.items() if rx.search(seg)]
+        if not fams:
+            continue
+        names = {w for w in norm(seg).split()
+                 if len(w) >= 3 and w not in _NOT_NAMES
+                 and not any(rx.fullmatch(w) for rx in _FAMILY_RES.values())}
+        for f in fams:
+            out.setdefault(f, set()).update(names)
+    return out
+
+
+def pick_version(wanted: str, items: list[dict], *, post_title: str = "",
+                 post_text: str = "") -> dict | None:
+    """Of several Spotify hits for one song, the cut the post is about.
+
+    A version the post names wins: a remix/live/acoustic tag in the searched
+    title or the post's own title must be matched (remixer too, if named), or
+    nothing is — adding a different cut of a new remix is a wrong add. A
+    version only mentioned in the post text is preferred when Spotify has
+    it. Otherwise the plain cut, else Spotify's top hit (some songs only
+    exist as mixes)."""
+    asked = _versions(wanted) or _versions(post_title)
+    strict = bool(asked)
+    if not asked:
+        prose = " ".join(m.group(0) for m in _PROSE_RE.finditer(post_text or ""))
+        asked = {f: set() for f, rx in _FAMILY_RES.items() if rx.search(prose)}
+    if asked:
+        names = set().union(*asked.values())
+        hits = [t for t in items if asked.keys() & _versions(t["name"]).keys()]
+        if names:
+            # Spotify credits the remixer in the tag or as an artist
+            # ("Ride It Out - Remix" by Poolside, LEISURE).
+            hits = [t for t in hits
+                    if names & (set().union(*_versions(t["name"]).values())
+                                | {w for a in t.get("artists") or []
+                                   for w in norm(a["name"]).split()})]
+        if hits:
+            return hits[0]
+        if strict:
+            return None
     w = norm(wanted)
     for t in items:
         if norm(t["name"]) == w:
             return t
-    if not _VARIANT_RE.search(_version_tail(wanted)):
-        for t in items:
-            if not _VARIANT_RE.search(_version_tail(t["name"])):
-                return t
+    for t in items:
+        if not _versions(t["name"]):
+            return t
     return items[0]
 
 

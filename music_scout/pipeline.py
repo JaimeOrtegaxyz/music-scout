@@ -172,7 +172,8 @@ def _process_one(
     if track.spotify_uri:
         sp_track: SpotifyTrack | None = client.track_by_uri(track.spotify_uri)
     else:
-        sp_track = client.search_track(artist, title, market=cfg.market)
+        sp_track = client.search_track(artist, title, market=cfg.market,
+                                       post_title=track.title, post_text=track.raw_text or "")
         if sp_track is None and track.raw_text and "「" in track.raw_text:
             sp_track = client.search_bracketed(
                 f"{track.artist} {track.title} {track.raw_text}", market=cfg.market)

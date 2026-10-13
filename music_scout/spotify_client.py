@@ -101,38 +101,45 @@ class SpotifyClient:
 
     # ---- search / resolve ----
 
-    def search_track(self, artist: str, title: str, market: str = "US") -> SpotifyTrack | None:
+    def search_track(self, artist: str, title: str, market: str = "US", *,
+                     post_title: str = "", post_text: str = "") -> SpotifyTrack | None:
         """Find a scraped (artist, title) on Spotify. Tries, cheapest-first:
         the exact field search on the raw strings, the same on cleaned strings
         (featured artists, stray quotes, 'のMV suffixes stripped), then a loose
         free-text search whose top hits must fuzzy-match artist AND title —
-        catches typos, '- Single Version' tails and Hype Machine truncation."""
+        catches typos, '- Single Version' tails and Hype Machine truncation.
+        post_title/post_text (the scraped headline and post) say which cut
+        the post is about — see clean.pick_version."""
+        post = {"post_title": post_title, "post_text": post_text}
         ca, ct = clean_artist(artist), clean_title(title)
         truncated = is_truncated(title)
         if not truncated:
-            hit = self._field_search(artist, title, market)
+            hit = self._field_search(artist, title, market, **post)
             if hit:
                 return hit
             if (ca, ct) != (artist, title) and ca and ct:
-                hit = self._field_search(ca, ct, market)
+                hit = self._field_search(ca, ct, market, **post)
                 if hit:
                     return hit
         if not ca or not ct or len(ca) + len(ct) > 100:
             return None  # misparsed prose — a loose search would only find noise
-        for t in self._search(f"{ca} {ct}", market, limit=5):
-            names = [a["name"] for a in t["artists"]]
-            if artist_matches(ca, names) and title_matches(ct, t["name"], prefix=truncated):
-                return self._to_track(t)
-        return None
+        items = [t for t in self._search(f"{ca} {ct}", market, limit=5)
+                 if artist_matches(ca, [a["name"] for a in t["artists"]])
+                 and title_matches(ct, t["name"], prefix=truncated)]
+        hit = pick_version(title, items, **post) if items else None
+        return self._to_track(hit) if hit else None
 
-    def _field_search(self, artist: str, title: str, market: str) -> SpotifyTrack | None:
+    def _field_search(self, artist: str, title: str, market: str,
+                      **post: str) -> SpotifyTrack | None:
         # Top few, not just the first: field filters are fuzzy, so hit #1 can
         # be another artist ("Re.You — You & I" → Carly Rae Jepsen) or a remix
-        # or instrumental when the post meant the original. Same one request.
+        # or instrumental when the post meant the original (or the reverse).
+        # Same one request.
         wanted = {artist, clean_artist(artist)}
         items = [t for t in self._search(f'track:"{title}" artist:"{artist}"', market, limit=5)
                  if any(artist_matches(a, [x["name"] for x in t["artists"]]) for a in wanted)]
-        return self._to_track(pick_version(title, items)) if items else None
+        hit = pick_version(title, items, **post) if items else None
+        return self._to_track(hit) if hit else None
 
     def search_bracketed(self, text: str, market: str = "US") -> SpotifyTrack | None:
         """Japanese headlines name the song in 「」 and the artist somewhere in
