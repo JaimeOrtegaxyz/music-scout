@@ -88,7 +88,9 @@ def _strip_version(s: str) -> str:
 def artist_matches(wanted: str, candidates: list[str]) -> bool:
     w = norm(wanted)
     if not w:
-        return False
+        # All-punctuation names ("@") norm to nothing; compare them as typed.
+        return bool(wanted.strip()) and any(
+            c.strip().casefold() == wanted.strip().casefold() for c in candidates)
     for c in candidates:
         n = norm(c)
         if not n:
@@ -110,3 +112,57 @@ def title_matches(wanted: str, got: str, *, prefix: bool = False) -> bool:
     if w == g or norm(_strip_version(got)) == w:
         return True
     return SequenceMatcher(None, w, g).ratio() >= 0.85
+
+
+# A cut the post didn't ask for: "Song - X Remix", "Song (Live)", "Song - Instrumental".
+_VARIANT_RE = re.compile(
+    r"\b(remix|mix|edit|rework|flip|bootleg|dub|vip|live|session|acoustic|"
+    r"instrumental|karaoke|demo|sped up|slowed|cover)\b",
+    re.IGNORECASE,
+)
+
+
+def _version_tail(s: str) -> str:
+    """The version part of a track name: after ' - ' or inside brackets."""
+    return s[len(_strip_version(s)):] + " ".join(re.findall(r"[\(\[](.*?)[\)\]]", s))
+
+
+def pick_version(wanted: str, items: list[dict]) -> dict:
+    """Of several Spotify hits for one song, the cut the post meant: an exact
+    title first, else one without a remix/live/instrumental tag the post
+    didn't name, else Spotify's own top hit."""
+    w = norm(wanted)
+    for t in items:
+        if norm(t["name"]) == w:
+            return t
+    if not _VARIANT_RE.search(_version_tail(wanted)):
+        for t in items:
+            if not _VARIANT_RE.search(_version_tail(t["name"])):
+                return t
+    return items[0]
+
+
+# Japanese headlines name the song in 「」, often after a cue word (新曲「X」,
+# 先行シングル「X」). Feeds truncate long headlines, so a bracket may not close.
+_BRACKET_RE = re.compile(r"(.{0,8})「([^」]{1,80})(?:」|$)")
+_SONG_CUE_RE = re.compile(r"(曲|シングル|ソング|single|MV)\W{0,3}$", re.IGNORECASE)
+
+
+def bracketed_titles(text: str) -> list[str]:
+    """Song-title candidates from 「」 in a headline, cued ones first. Only
+    Latin-bearing ones: CJK-only brackets are taglines and quotes."""
+    cued, rest = [], []
+    for pre, t in _BRACKET_RE.findall(text or ""):
+        t = t.strip()
+        if re.search(r"[A-Za-z]", t) and len(t) <= 60:
+            (cued if _SONG_CUE_RE.search(pre) else rest).append(t)
+    return list(dict.fromkeys(cued + rest))
+
+
+def mentioned(name: str, text: str) -> bool:
+    """Does the headline name this artist as a whole word? Japanese prose
+    abuts names directly (Slow Pulpが), so word edges are Latin-only."""
+    n = norm(name)
+    if len(n) < 2:
+        return False
+    return re.search(rf"(?<![a-z0-9]){re.escape(n)}(?![a-z0-9])", norm(text)) is not None

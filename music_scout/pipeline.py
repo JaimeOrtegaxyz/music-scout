@@ -173,6 +173,9 @@ def _process_one(
         sp_track: SpotifyTrack | None = client.track_by_uri(track.spotify_uri)
     else:
         sp_track = client.search_track(artist, title, market=cfg.market)
+        if sp_track is None and track.raw_text and "「" in track.raw_text:
+            sp_track = client.search_bracketed(
+                f"{track.artist} {track.title} {track.raw_text}", market=cfg.market)
 
     if sp_track is None:
         # A shelved track's monthly look stays on the shelf when it misses.

@@ -22,7 +22,8 @@ import spotipy
 import urllib3
 from spotipy.oauth2 import SpotifyOAuth
 
-from .clean import artist_matches, clean_artist, clean_title, is_truncated, title_matches
+from .clean import (artist_matches, bracketed_titles, clean_artist, clean_title, is_truncated,
+                    mentioned, pick_version, title_matches)
 from .config import Config
 
 SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private user-library-read"
@@ -125,8 +126,25 @@ class SpotifyClient:
         return None
 
     def _field_search(self, artist: str, title: str, market: str) -> SpotifyTrack | None:
-        items = self._search(f'track:"{title}" artist:"{artist}"', market, limit=1)
-        return self._to_track(items[0]) if items else None
+        # Top few, not just the first: field filters are fuzzy, so hit #1 can
+        # be another artist ("Re.You — You & I" → Carly Rae Jepsen) or a remix
+        # or instrumental when the post meant the original. Same one request.
+        wanted = {artist, clean_artist(artist)}
+        items = [t for t in self._search(f'track:"{title}" artist:"{artist}"', market, limit=5)
+                 if any(artist_matches(a, [x["name"] for x in t["artists"]]) for a in wanted)]
+        return self._to_track(pick_version(title, items)) if items else None
+
+    def search_bracketed(self, text: str, market: str = "US") -> SpotifyTrack | None:
+        """Japanese headlines name the song in 「」 and the artist somewhere in
+        the prose, so our artist/title split comes out as two prose fragments.
+        Search each bracketed title alone; keep a hit whose artist the
+        headline names."""
+        for title in bracketed_titles(text)[:2]:
+            for t in self._search(f'track:"{title}"', market, limit=10):
+                if (title_matches(title, t["name"])
+                        and any(mentioned(a["name"], text) for a in t["artists"])):
+                    return self._to_track(t)
+        return None
 
     def _search(self, q: str, market: str, limit: int) -> list[dict]:
         # Spotify rejects queries over 250 chars with a 400. A query that long
