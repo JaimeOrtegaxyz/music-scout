@@ -290,7 +290,8 @@ def fetch_pending(conn: sqlite3.Connection) -> list[Track]:
 
 def fetch_added_today(conn: sqlite3.Connection) -> list[Track]:
     rows = conn.execute(
-        "SELECT * FROM tracks WHERE status=? AND date(added_at)=date('now') "
+        "SELECT * FROM tracks WHERE status=? "
+        "AND date(added_at, 'localtime')=date('now', 'localtime') "
         "ORDER BY added_at",
         (STATUS_ADDED,),
     ).fetchall()

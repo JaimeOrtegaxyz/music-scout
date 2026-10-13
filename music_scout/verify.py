@@ -78,15 +78,15 @@ def _db_signals() -> dict:
     with store.connect() as conn:
         out["added_today"] = conn.execute(
             "SELECT COUNT(*) FROM tracks WHERE status='added' "
-            "AND date(added_at)=date('now')"
+            "AND date(added_at, 'localtime')=date('now', 'localtime')"
         ).fetchone()[0]
         out["added_last_7d"] = conn.execute(
             "SELECT COUNT(*) FROM tracks WHERE status='added' "
-            "AND added_at > datetime('now','-7 days')"
+            "AND datetime(added_at) > datetime('now','-7 days')"
         ).fetchone()[0]
         out["errors_today"] = conn.execute(
             "SELECT COUNT(*) FROM tracks WHERE status='error' "
-            "AND date(last_checked_at)=date('now')"
+            "AND date(last_checked_at, 'localtime')=date('now', 'localtime')"
         ).fetchone()[0]
         out["retry_backlog"] = conn.execute(
             "SELECT COUNT(*) FROM tracks WHERE status IN ('not_on_spotify','error')"
